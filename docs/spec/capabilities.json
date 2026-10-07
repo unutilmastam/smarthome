@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "description": "SmartHome capability registry. Single source of truth for backend, hub and web. Attribute specs and action params are JSON Schema.",
+  "risk_levels": {
+    "low": "Ordinary control (lights, sockets, climate).",
+    "medium": "Can waste water/energy or cause damage if left on (irrigation, pumps).",
+    "high": "Physical access or power cut (gates, locks, contactors). Requires PIN confirmation."
+  },
+  "capabilities": {
+    "switch": {
+      "title": "On/off",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "on": { "type": "boolean" }
+      },
+      "actions": {
+        "turn_on": { "params": { "type": "object", "additionalProperties": false } },
+        "turn_off": { "params": { "type": "object", "additionalProperties": false } },
+        "toggle": { "params": { "type": "object", "additionalProperties": false } }
+      }
+    },
+    "dimmer": {
+      "title": "Brightness",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "brightness": { "type": "integer", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {
+        "set_brightness": {
+          "params": {
+            "type": "object",
+            "required": ["brightness"],
+            "additionalProperties": false,
+            "properties": { "brightness": { "type": "integer", "minimum": 0, "maximum": 100 } }
+          }
+        }
+      }
+    },
+    "color": {
+      "title": "Color",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "rgb": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 },
+        "color_temp": { "type": "integer", "minimum": 1500, "maximum": 9000, "unit": "K" }
+      },
+      "actions": {
+        "set_rgb": {
+          "params": {
+            "type": "object",
+            "required": ["rgb"],
+            "additionalProperties": false,
+            "properties": {
+              "rgb": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 }
+            }
+          }
+        },
+        "set_color_temp": {
+          "params": {
+            "type": "object",
+            "required": ["color_temp"],
+            "additionalProperties": false,
+            "properties": { "color_temp": { "type": "integer", "minimum": 1500, "maximum": 9000 } }
+          }
+        }
+      }
+    },
+    "power_meter": {
+      "title": "Energy meter",
+      "permission": "view",
+      "risk": "low",
+      "attributes": {
+        "voltage": { "type": "number", "unit": "V" },
+        "current": { "type": "number", "unit": "A" },
+        "power": { "type": "number", "unit": "W" },
+        "energy": { "type": "number", "unit": "kWh" },
+        "power_factor": { "type": "number", "minimum": 0, "maximum": 1 },
+        "frequency": { "type": "number", "unit": "Hz" }
+      },
+      "actions": {}
+    },
+    "contactor": {
+      "title": "Remote circuit contactor (not a breaker)",
+      "permission": "control_power",
+      "risk": "high",
+      "attributes": {
+        "commanded_closed": { "type": "boolean", "description": "What the controller drives the coil to. Not proof of power." },
+        "aux_contact_closed": { "type": "boolean", "description": "Auxiliary contact feedback. Only this confirms switching." }
+      },
+      "actions": {
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "open": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "aux_contact_closed"
+    },
+    "climate": {
+      "title": "Climate",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "power": { "type": "boolean" },
+        "current_temp": { "type": "number", "unit": "°C" },
+        "target_temp": { "type": "number", "minimum": 16, "maximum": 30, "unit": "°C" },
+        "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] },
+        "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] },
+        "humidity": { "type": "number", "unit": "%" }
+      },
+      "actions": {
+        "set_power": {
+          "params": { "type": "object", "required": ["power"], "additionalProperties": false, "properties": { "power": { "type": "boolean" } } }
+        },
+        "set_target_temp": {
+          "params": {
+            "type": "object", "required": ["target_temp"], "additionalProperties": false,
+            "properties": { "target_temp": { "type": "number", "minimum": 16, "maximum": 30 } }
+          }
+        },
+        "set_mode": {
+          "params": {
+            "type": "object", "required": ["mode"], "additionalProperties": false,
+            "properties": { "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] } }
+          }
+        },
+        "set_fan": {
+          "params": {
+            "type": "object", "required": ["fan"], "additionalProperties": false,
+            "properties": { "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] } }
+          }
+        }
+      }
+    },
+    "cover": {
+      "title": "Gate / door / shutter",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "position": { "type": "integer", "minimum": 0, "maximum": 100, "unit": "%" },
+        "state": { "type": "string", "enum": ["open", "closed", "opening", "closing", "stopped", "unknown"] }
+      },
+      "actions": {
+        "open": { "params": { "type": "object", "additionalProperties": false } },
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "stop": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "state"
+    },
+    "lock": {
+      "title": "Lock",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "locked": { "type": "boolean" }
+      },
+      "actions": {
+        "lock": { "params": { "type": "object", "additionalProperties": false } },
+        "unlock": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "locked"
+    },
+    "contact": {
+      "title": "Door/window sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "open": { "type": "boolean" } },
+      "actions": {}
+    },
+    "motion": {
+      "title": "Motion (PIR / radar)",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "detected": { "type": "boolean" } },
+      "actions": {}
+    },
+    "environment": {
+      "title": "Environment sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": {
+        "temperature": { "type": "number", "unit": "°C" },
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" },
+        "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {}
+    },
+    "leak": {
+      "title": "Water leak sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "wet": { "type": "boolean" } },
+      "actions": {}
+    },
+    "valve": {
+      "title": "Irrigation valve / pump",
+      "permission": "control_basic",
+      "risk": "medium",
+      "attributes": {
+        "open": { "type": "boolean" },
+        "flow": { "type": "number", "unit": "L/min" },
+        "remaining_s": { "type": "integer", "minimum": 0, "unit": "s" }
+      },
+      "actions": {
+        "open": {
+          "params": {
+            "type": "object", "required": ["duration_s"], "additionalProperties": false,
+            "properties": { "duration_s": { "type": "integer", "minimum": 1, "maximum": 3600 } }
+          }
+        },
+        "close": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "open"
+    },
+    "camera": {
+      "title": "Camera (metadata only, video stays at home)",
+      "permission": "camera_live",
+      "risk": "low",
+      "attributes": {
+        "stream_available": { "type": "boolean" },
+        "recording": { "type": "boolean" },
+        "disk_usage_pct": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {}
+    }
+  }
+}

@@ -20,7 +20,9 @@ describe("switch", () => {
       return undefined;
     });
     renderWithProviders(<DeviceControls device={light} role="family" />);
-    await userEvent.click(screen.getByRole("button", { name: "Yoqish" }));
+    const sw = screen.getByRole("switch", { name: "Yoqish/o'chirish" });
+    expect(sw).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(sw);
     const post = calls.find((c) => c.method === "POST")!;
     expect(post.body).toMatchObject({ device_id: "d1", capability: "switch", action: "turn_on", params: {} });
     expect((post.body as { idempotency_key: string }).idempotency_key.length).toBeGreaterThan(8);
@@ -32,21 +34,21 @@ describe("switch", () => {
   it("shows HUB_UNREACHABLE clearly", async () => {
     mockFetch((url) => (url.endsWith("/commands") ? err(503, "HUB_UNREACHABLE") : undefined));
     renderWithProviders(<DeviceControls device={light} role="owner" />);
-    await userEvent.click(screen.getByRole("button", { name: "Yoqish" }));
+    await userEvent.click(screen.getByRole("switch"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Hub bilan aloqa yo'q");
   });
 
   it("viewer cannot control", () => {
     mockFetch(() => undefined);
     renderWithProviders(<DeviceControls device={light} role="viewer" />);
-    expect(screen.getByRole("button", { name: "Yoqish" })).toBeDisabled();
+    expect(screen.getByRole("switch")).toBeDisabled();
     expect(screen.getByText("Sizda boshqarish ruxsati yo'q")).toBeInTheDocument();
   });
 
   it("disables controls when the hub is offline", () => {
     mockFetch(() => undefined);
     renderWithProviders(<DeviceControls device={{ ...light, hub_online: false }} role="owner" />);
-    expect(screen.getByRole("button", { name: "Yoqish" })).toBeDisabled();
+    expect(screen.getByRole("switch")).toBeDisabled();
   });
 
   it("unknown value is shown as unknown, never as Off", () => {
@@ -57,6 +59,21 @@ describe("switch", () => {
     expect(row).toHaveTextContent("—");
     expect(row).toHaveTextContent("Noma'lum");
     expect(row).not.toHaveTextContent("O'chirilgan");
+    // No switch position is guessed: two explicit buttons instead.
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.getByRole("button", { name: "Yoqish" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "O'chirish" })).toBeEnabled();
+  });
+
+  it("a switch that is reported ON sends turn_off when flipped", async () => {
+    const calls = mockFetch((url, init) => (url.endsWith("/commands") && init.method === "POST"
+      ? ok({ id: "c9", capability: "switch", action: "turn_off", status: "queued", reason: null }) : undefined));
+    const on = device({ switch: cap("control_basic", "low", { on: v(true) }) });
+    renderWithProviders(<DeviceControls device={on} role="owner" />);
+    const sw = screen.getByRole("switch");
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(sw);
+    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ action: "turn_off" });
   });
 });
 
@@ -148,7 +165,8 @@ describe("command tracking race", () => {
       if (url.endsWith("/commands/c2")) return json({ id: "c2", capability: "switch", action: "turn_off", status: "confirmed", reason: null });
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
-    const d = device({ switch: cap("control_basic", "low", { on: v(false) }) });
+    // Unknown state -> explicit on/off buttons, so both commands can be sent back to back.
+    const d = device({ switch: cap("control_basic", "low", { on: unknown() }) });
     renderWithProviders(<DeviceControls device={d} role="owner" />);
     await userEvent.click(screen.getByRole("button", { name: "Yoqish" }));
     // c1 is "acked" (not busy) and its next poll is hanging: the user sends c2.

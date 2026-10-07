@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDevices, useRooms } from "../api/hooks";
-import { AddDeviceForm } from "../components/AddForms";
+import { useAddFlow, useCanConfigure } from "../components/AddFlow";
+import { Icon } from "../components/Icon";
 import { DeviceCard } from "../components/DeviceCard";
 import { useLive } from "../components/Layout";
-import { CAPABILITIES, can } from "../lib/contracts";
+import { CAPABILITIES } from "../lib/contracts";
 import { useCurrentHome } from "../lib/home";
 
 export function Devices() {
@@ -16,6 +17,8 @@ export function Devices() {
   const [cap, setCap] = useState("");
   const [avail, setAvail] = useState("");
   const [room, setRoom] = useState("");
+  const open = useAddFlow((s) => s.open);
+  const canEdit = useCanConfigure();
   const list = useMemo(() => (devices.data ?? []).filter((d) =>
     (!q || `${d.name} ${d.key}`.toLowerCase().includes(q.toLowerCase())) &&
     (!cap || cap in d.capabilities) &&
@@ -23,7 +26,9 @@ export function Devices() {
     (!room || (room === "none" ? d.room_id === null : d.room_id === room))), [devices.data, q, cap, avail, room]);
   return (
     <>
-      <h2>{t("devices.title")}</h2>
+      <div className="page-head">
+        <h2>{t("devices.title")}</h2>
+      </div>
       <div className="grid" style={{ marginBottom: 12 }}>
         <input type="search" placeholder={t("app.search")} aria-label={t("app.search")} value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label={t("devices.capability")} value={cap} onChange={(e) => setCap(e.target.value)}>
@@ -40,11 +45,14 @@ export function Devices() {
           <option value="none">{t("devices.noRoom")}</option>
         </select>
       </div>
-      {devices.isLoading ? <p>{t("app.loading")}</p> : list.length === 0 ? <p className="muted">{t("devices.noMatch")}</p> :
+      {devices.isLoading ? <p>{t("app.loading")}</p> : !(devices.data ?? []).length ? (
+        <div className="empty card">
+          <span className="ico big"><Icon name="devices" size={34} /></span>
+          <p>{t("dashboard.noDevices")}</p>
+          {canEdit && <button className="primary" onClick={() => open("device")}><Icon name="plus" size={18} /> {t("devices.add")}</button>}
+        </div>
+      ) : list.length === 0 ? <p className="muted">{t("devices.noMatch")}</p> :
         <div className="grid">{list.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>}
-      {home && can(home.my_role, "configure") && (
-        <div style={{ marginTop: 16, maxWidth: 560 }}><AddDeviceForm homeId={home.id} rooms={rooms.data ?? []} /></div>
-      )}
     </>
   );
 }

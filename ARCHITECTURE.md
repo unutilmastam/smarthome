@@ -244,9 +244,10 @@ sh/v1/{home_id}/hub/health                    (retained)
 ```
 users, roles, user_home_roles, sessions, password_resets
 homes (timezone, lat/lon — quyosh chiqishi/botishi uchun)
-floors, rooms (type: indoor/outdoor)
+floors, rooms (type: indoor/outdoor, icon)
 hubs (home_id, secret_hash, last_seen, version)
-devices (room_id, adapter, protocol, model, fail_safe_state, enabled)
+devices (room_id, adapter, protocol, model, icon, fail_safe_state, enabled)
+-- icon: faqat UI uchun ko'rinish kaliti (masalan "bulb", "fan"); holatga ta'sir qilmaydi
 device_capabilities (device_id, capability, config_json)
 device_state (device_id, capability, value_json, source, quality, ts)   -- joriy
 commands (id, device_id, action, params, status, requested_by, created_at, expires_at)

@@ -666,3 +666,27 @@ Sinalmagan:
 - haqiqiy hostmaster.uz serverida deploy va qaytish;
 - Telegram xabarlari (bot tokeni hali yo'q);
 - dizayn haqiqiy telefon va iPad'da (faqat emulyatsiyada ko'rildi).
+
+## Qo'shimcha: Qurilma va bo'limlarni ilovadan boshqarish — 2026-10-07
+Holat: tugadi `[SIM]`.
+
+Qilingan ishlar:
+- **Qurilma qo'shish ustasi.** "+" tugmasi orqali ochiladi va 2 qadamdan iborat:
+  1. tur tanlanadi — 19 ta tur SVG ikonkalari bilan: chiroq, rozetka, darvoza, konditsioner, datchiklar va boshqalar;
+  2. nom, bo'lim va ikonka tanlanadi.
+- **Kalit (`device_key`)** nomdan avtomatik taklif qilinadi (lotin/kirill transliteratsiyasi). U proshivka bilan bir xil bo'lishi kerak, shuning uchun qo'lda tahrirlash mumkin.
+- **Qurilmani tahrirlash va olib tashlash.** Nom, bo'lim va ikonkani o'zgartirish mumkin. Olib tashlashdan oldin tasdiq so'raladi.
+- **Bo'limlar (xonalar).**
+  - Ikonkali plitkalar ko'rsatiladi: qurilmalar soni va nechtasi yoniqligi. Yoniqlar soni faqat tasdiqlangan holatdan hisoblanadi.
+  - Bo'lim qo'shish, tahrirlash va o'chirish mumkin. O'chirishda tasdiq so'raladi, qurilmalar "Bo'limsiz" bo'lib qoladi.
+- **Ikonkalar.** 36 ta qurilma va 17 ta bo'lim ikonkasi (inline SVG). Backend'da `devices.icon` va `rooms.icon` ustunlari qo'shildi (migratsiya 0005, expand-only). Ikonka faqat ko'rinish uchun, holatga ta'sir qilmaydi.
+- **Real ko'rinishdagi kalit (switch).** Holat qurilmadan tasdiqlangan bo'lsa, kalit shu holatda turadi. Bosilganda teskari buyruq ketadi, buyruq bajarilayotganda aylanuvchi indikator ko'rinadi. Holat noma'lum bo'lsa, kalit holatini taxmin qilmaydi — o'rniga ikkita aniq tugma ko'rsatiladi.
+- **Konditsioner** — quvvat kaliti va harorat stepperi. **Darvoza va qulf** tugmalarida ikonkalar bor.
+- Yangi qo'shilgan qurilmaning holati Hub uni ko'rmaguncha "Noma'lum" bo'ladi. Bu foydalanuvchiga ochiq aytiladi.
+
+Testlar:
+- Backend: 156 o'tdi (ikonka testi bilan). Migratsiya testi PostgreSQL'da o'tdi.
+- Web vitest: 35 o'tdi.
+- Playwright E2E: 8 o'tdi (telefon + iPad) `[SIM]`. Yangi stsenariy: bo'lim qo'shish → qurilma qo'shish → "Noma'lum" holat → olib tashlash.
+
+Sinalmagan: haqiqiy telefon va iPad'da (faqat emulyatsiya).

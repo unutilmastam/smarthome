@@ -7,6 +7,7 @@ import { useCurrentHome } from "../lib/home";
 import { isLocalHub } from "../lib/local";
 import { usePrefs } from "../lib/prefs";
 import { useRealtime } from "../lib/realtime";
+import { AddButton, AddFlowHost } from "./AddFlow";
 import { Icon } from "./Icon";
 
 export const RealtimeContext = createContext<"realtime" | "polling">("polling");
@@ -36,7 +37,7 @@ export function Layout() {
     { to: "/settings", icon: "settings", label: t("nav.settings") },
     ...(owner ? [{ to: "/members", icon: "members", label: t("nav.members") }] : []),
   ];
-  const tabs = [all[0], all[2], all[3], all[4], { to: "/more", icon: "more", label: t("nav.more") }];
+  const tabs = [all[0], all[1], all[2], all[3], { to: "/more", icon: "more", label: t("nav.more") }];
 
   return (
     <RealtimeContext.Provider value={mode}>
@@ -58,6 +59,7 @@ export function Layout() {
                 {homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
               </select>
             )}
+            <AddButton compact />
             <span className={`live ${mode === "realtime" ? "on" : ""}`} title={t(mode === "realtime" ? "banner.realtime" : "banner.polling")}>
               <i />{mode === "realtime" ? "live" : "3s"}
             </span>
@@ -68,6 +70,7 @@ export function Layout() {
             <div className="banner warn" role="alert" data-testid="hub-offline"><Icon name="offline" />{t("banner.hubOffline")}</div>}
           <main><Outlet /></main>
         </div>
+        <AddFlowHost />
         <nav className="tabbar" aria-label="tabs">
           {tabs.map((n) => (
             <NavLink key={n.to} to={n.to} end={"end" in n ? n.end : undefined}><Icon name={n.icon} size={22} />{n.label}</NavLink>

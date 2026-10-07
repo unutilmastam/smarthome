@@ -41,7 +41,7 @@ def floor_out(f: Floor) -> dict:
 
 def room_out(r: Room) -> dict:
     return {"id": str(r.id), "home_id": str(r.home_id), "name": r.name, "type": r.type,
-            "floor_id": str(r.floor_id) if r.floor_id else None}
+            "floor_id": str(r.floor_id) if r.floor_id else None, "icon": r.icon}
 
 
 # ---- homes ---------------------------------------------------------------------

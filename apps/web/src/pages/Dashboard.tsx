@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 import { useDevices, useHubs, useRooms } from "../api/hooks";
 import type { Device } from "../api/types";
 import { DeviceCard } from "../components/DeviceCard";
+import { useAddFlow, useCanConfigure } from "../components/AddFlow";
 import { Icon } from "../components/Icon";
 import { useLive } from "../components/Layout";
+import { roomIcon } from "../lib/catalog";
 import { useCurrentHome } from "../lib/home";
 import { usePrefs } from "../lib/prefs";
 
@@ -52,7 +54,7 @@ export function Dashboard() {
   const hubOnline = (hubs.data ?? []).some((h) => h.status === "active" && h.online);
 
   if (devices.isLoading) return <p>{t("app.loading")}</p>;
-  if (list.length === 0) return <p className="muted">{t("dashboard.noDevices")}</p>;
+  if (list.length === 0) return <FirstRun />;
   const base = pinned.length ? list.filter((d) => pinned.includes(d.id)) : list;
   const shown = room ? base.filter((d) => d.room_id === room) : base;
   return (
@@ -67,9 +69,9 @@ export function Dashboard() {
       </div>
       {(rooms.data?.length ?? 0) > 0 && (
         <div className="chips" role="group" aria-label={t("dashboard.rooms")}>
-          <button aria-pressed={room === null} onClick={() => setRoom(null)}>{t("app.all")}</button>
+          <button aria-pressed={room === null} onClick={() => setRoom(null)}><Icon name="home" size={16} /> {t("app.all")}</button>
           {rooms.data!.map((r) => (
-            <button key={r.id} aria-pressed={room === r.id} onClick={() => setRoom(r.id)}>{r.name}</button>
+            <button key={r.id} aria-pressed={room === r.id} onClick={() => setRoom(r.id)}><Icon name={roomIcon(r)} size={16} /> {r.name}</button>
           ))}
         </div>
       )}
@@ -77,5 +79,24 @@ export function Dashboard() {
       {!pinned.length && <p className="muted">{t("dashboard.pinHint")}</p>}
       <div className="grid">{shown.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>
     </>
+  );
+}
+
+function FirstRun() {
+  const { t } = useTranslation();
+  const open = useAddFlow((s) => s.open);
+  const canEdit = useCanConfigure();
+  return (
+    <div className="empty card hero">
+      <span className="ico big"><Icon name="home" size={36} /></span>
+      <h2>{t("dashboard.welcome")}</h2>
+      <p className="muted">{t("dashboard.noDevices")}</p>
+      {canEdit && (
+        <div className="row" style={{ justifyContent: "center" }}>
+          <button className="primary" onClick={() => open("room")}><Icon name="rooms" size={18} /> {t("rooms.add")}</button>
+          <button className="primary" onClick={() => open("device")}><Icon name="plus" size={18} /> {t("devices.add")}</button>
+        </div>
+      )}
+    </div>
   );
 }

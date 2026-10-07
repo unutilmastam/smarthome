@@ -9,11 +9,13 @@ function keys(o: Record<string, unknown>, prefix = ""): string[] {
     v && typeof v === "object" ? keys(v as Record<string, unknown>, `${prefix}${k}.`) : [`${prefix}${k}`]);
 }
 
+// i18next plural forms (key_one, key_few, …) differ per language; compare the base key.
+const base = (ks: string[]) => [...new Set(ks.map((k) => k.replace(/_(zero|one|two|few|many|other)$/, "")))].sort();
+
 describe("i18n", () => {
   it("ru and en have exactly the uz keys", () => {
-    const base = keys(uz).sort();
-    expect(keys(ru).sort()).toEqual(base);
-    expect(keys(en).sort()).toEqual(base);
+    expect(base(keys(ru))).toEqual(base(keys(uz)));
+    expect(base(keys(en))).toEqual(base(keys(uz)));
   });
   it("every capability, attribute and action from contracts has an uz label", () => {
     const caps = (capabilities as { capabilities: Record<string, { attributes: object; actions: object }> }).capabilities;

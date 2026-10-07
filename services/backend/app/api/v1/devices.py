@@ -70,7 +70,7 @@ def create_device(home_id: uuid.UUID, body: DeviceIn, request: Request,
         raise conflict(f"Device key '{body.key}' already exists in this home")
     d = Device(
         id=uuid.uuid4(), home_id=home_id, room_id=body.room_id, key=body.key, name=body.name,
-        adapter=body.adapter, protocol=body.protocol, model=body.model,
+        adapter=body.adapter, protocol=body.protocol, model=body.model, icon=body.icon,
         fail_safe_state=body.fail_safe_state, unsupported=sorted(body.unsupported),
         enabled=body.enabled, availability="unknown",
     )
@@ -119,7 +119,7 @@ def patch_device(device_id: uuid.UUID, body: DevicePatch, request: Request,
         validate_capabilities(contracts, caps, unsupported)
     if "room_id" in changes:
         check_room(db, d.home_id, changes["room_id"])
-    for k in ("name", "room_id", "model", "fail_safe_state", "enabled"):
+    for k in ("name", "room_id", "model", "icon", "fail_safe_state", "enabled"):
         if k in changes:
             setattr(d, k, changes[k])
     if "unsupported" in changes:

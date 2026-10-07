@@ -206,3 +206,27 @@ def test_home_patch_and_validation(owner, owner_home):
     assert (d["latitude"], d["longitude"], d["name"]) == (41.31, 69.28, "Uyim")
     assert d["timezone"] == "Asia/Tashkent"
     assert owner.post("/api/v1/homes", json={"name": "X", "latitude": 1}).status_code == 422
+
+
+def test_device_and_room_icon(owner, owner_home, light):
+    assert light["icon"] is None  # no icon chosen -> UI derives one from capabilities
+    r = owner.post(f"{_home(owner_home)}/devices",
+                   json={**LIGHT, "key": "desk_fan", "name": "Ventilyator", "icon": "fan"})
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["icon"] == "fan"
+    r = owner.patch(f"/api/v1/devices/{light['id']}", json={"icon": "lamp"})
+    assert r.status_code == 200 and r.json()["data"]["icon"] == "lamp"
+    r = owner.patch(f"/api/v1/devices/{light['id']}", json={"icon": None})
+    assert r.status_code == 200 and r.json()["data"]["icon"] is None
+    for bad in ("Bulb", "../x", "a" * 40, "<svg>"):
+        r = owner.patch(f"/api/v1/devices/{light['id']}", json={"icon": bad})
+        assert r.status_code == 422, bad
+
+    r = owner.post(f"{_home(owner_home)}/rooms", json={"name": "Oshxona", "icon": "kitchen"})
+    assert r.status_code == 201, r.text
+    room = r.json()["data"]
+    assert room["icon"] == "kitchen"
+    r = owner.patch(f"/api/v1/rooms/{room['id']}", json={"icon": "sofa"})
+    assert r.status_code == 200 and r.json()["data"]["icon"] == "sofa"
+    r = owner.post(f"{_home(owner_home)}/rooms", json={"name": "X", "icon": "Bad Icon"})
+    assert r.status_code == 422

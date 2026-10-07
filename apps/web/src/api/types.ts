@@ -25,6 +25,8 @@ export interface Device {
   adapter: string;
   protocol: string;
   model: string | null;
+  /** UI icon key chosen by the owner; null = derived from capabilities. */
+  icon?: string | null;
   enabled: boolean;
   unsupported: string[];
   availability: { status: "online" | "offline" | "unknown"; ts: string | null };
@@ -53,7 +55,7 @@ export interface EnergySummary {
 }
 export interface TelemetryPoint { ts: string; avg: number; min: number; max: number; last: number }
 
-export interface Room { id: string; home_id: string; name: string; type: "indoor" | "outdoor"; floor_id: string | null }
+export interface Room { id: string; home_id: string; name: string; type: "indoor" | "outdoor"; floor_id: string | null; icon?: string | null }
 
 export interface Hub {
   id: string; name: string; status: "active" | "revoked"; online: boolean;

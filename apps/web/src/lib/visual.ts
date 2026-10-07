@@ -3,6 +3,7 @@
  * requested). Unknown values give a neutral look, not "off".
  */
 import type { Device, Value } from "../api/types";
+import { hasIcon } from "../components/Icon";
 
 export type Tone = "light" | "gate" | "cool" | "water" | "power" | "alert" | "sensor" | "camera" | "neutral";
 
@@ -19,6 +20,13 @@ export interface Visual {
 const val = (v?: Value) => (v && (v.quality === "good" || v.quality === "stale") ? v.value : undefined);
 
 export function deviceVisual(d: Device): Visual {
+  const v = derivedVisual(d);
+  // The owner's icon choice only changes the picture; lock keeps its live locked/unlocked icon.
+  if (hasIcon(d.icon) && !(d.capabilities.lock && d.icon === "lock")) return { ...v, icon: d.icon };
+  return v;
+}
+
+function derivedVisual(d: Device): Visual {
   const c = d.capabilities;
   const offline = !d.hub_online || d.availability.status === "offline";
   const base = { offline };

@@ -31,6 +31,7 @@ class Device(UUIDPk, Timestamps, Base):
     adapter: Mapped[str] = mapped_column(String(40), nullable=False)
     protocol: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[Optional[str]] = mapped_column(String(120))
+    icon: Mapped[Optional[str]] = mapped_column(String(32))
     fail_safe_state: Mapped[Optional[dict]] = mapped_column(JSON)
     # ["capability.attribute", ...] the hardware cannot measure -> shown as not_supported.
     unsupported: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

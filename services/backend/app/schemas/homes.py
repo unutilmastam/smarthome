@@ -6,6 +6,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.schemas.auth import PASSWORD_MIN, normalize_email
 from app.schemas.common import Model
+from app.schemas.devices import ICON_PATTERN
 
 Name = Field(min_length=1, max_length=120)
 
@@ -78,12 +79,14 @@ class RoomIn(Model):
     name: str = Name
     type: Literal["indoor", "outdoor"] = "indoor"
     floor_id: Optional[uuid.UUID] = None
+    icon: Optional[str] = Field(default=None, pattern=ICON_PATTERN)
 
 
 class RoomPatch(Model):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     type: Optional[Literal["indoor", "outdoor"]] = None
     floor_id: Optional[uuid.UUID] = None
+    icon: Optional[str] = Field(default=None, pattern=ICON_PATTERN)
 
 
 class HubIn(Model):

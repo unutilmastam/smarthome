@@ -70,5 +70,6 @@ class Room(UUIDPk, Timestamps, Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     type: Mapped[str] = mapped_column(String(16), default="indoor", nullable=False)
+    icon: Mapped[Optional[str]] = mapped_column(String(32))
 
     __table_args__ = (CheckConstraint("type IN ('indoor','outdoor')", name="type_valid"),)

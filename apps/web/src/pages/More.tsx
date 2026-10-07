@@ -8,7 +8,7 @@ export function More() {
   const { t } = useTranslation();
   const { home } = useCurrentHome();
   const items = [
-    { to: "/rooms", icon: "rooms", label: t("nav.rooms"), tone: "tone-sensor" },
+    { to: "/cameras", icon: "camera", label: t("nav.cameras"), tone: "tone-camera" },
     { to: "/hub", icon: "hub", label: t("nav.hub"), tone: "tone-power" },
     { to: "/settings", icon: "settings", label: t("nav.settings"), tone: "tone-neutral" },
     ...(can(home?.my_role, "manage_users") ? [{ to: "/members", icon: "members", label: t("nav.members"), tone: "tone-gate" }] : []),

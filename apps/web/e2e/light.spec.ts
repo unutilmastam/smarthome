@@ -15,14 +15,21 @@ test("login → turn on the garden light → confirmed by the device", async ({ 
   await expect(card).toBeVisible();
   // Wait for the hub to report the light's real state first.
   await expect(card.getByTestId("value-Holat")).toContainText("Tasdiqlangan", { timeout: 20_000 });
-  await card.getByRole("button", { name: "Yoqish" }).click();
+  const sw = card.getByRole("switch", { name: "Yoqish/o'chirish" });
+  if (await sw.getAttribute("aria-checked") === "true") {   // left on by another run: start from off
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-checked", "false", { timeout: 15_000 });
+  }
+  await sw.click();
   await expect(card.getByTestId("command-status")).toHaveAttribute("data-status", "confirmed", { timeout: 15_000 });
   await expect(card.getByTestId("value-Holat")).toContainText("Yoqilgan", { timeout: 10_000 });
+  // The switch knob follows the state the DEVICE reported.
+  await expect(sw).toHaveAttribute("aria-checked", "true");
   // Reload: access token was only in memory, the HttpOnly refresh cookie restores the session.
   await page.reload();
   await expect(page.getByTestId("device-garden_lights").getByTestId("value-Holat")).toContainText("Yoqilgan");
   // Turn it off again so tests stay independent.
-  await page.getByTestId("device-garden_lights").getByRole("button", { name: "O'chirish" }).click();
+  await page.getByTestId("device-garden_lights").getByRole("switch").click();
   await expect(page.getByTestId("device-garden_lights").getByTestId("command-status"))
     .toHaveAttribute("data-status", "confirmed", { timeout: 15_000 });
 });

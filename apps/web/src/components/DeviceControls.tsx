@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { CapabilityView, Device, Role } from "../api/types";
+import type { CapabilityView, Device, Role, Value } from "../api/types";
 import { useCommand } from "../lib/commands";
 import { CAPABILITIES, can, hasFeedback } from "../lib/contracts";
 import { useSession } from "../auth/session";
 import { CommandStatus } from "./CommandStatus";
+import { Icon } from "./Icon";
 import { PinDialog } from "./PinDialog";
 import { ValueView } from "./ValueView";
 
@@ -14,21 +15,47 @@ interface CtlProps { device: Device; cap: string; view: CapabilityView; send: Se
 
 const attrLabel = (t: (k: string) => string, a: string) => t(`attr.${a}`);
 
+/**
+ * A real-looking power switch. The knob follows the REPORTED state only; while a command is
+ * in flight the knob shows a spinner ring. When the state is unknown there is no "current"
+ * side to flip from, so two explicit buttons are shown instead of guessing.
+ */
+export function PowerSwitch({ on, label, pending, disabled, onTurnOn, onTurnOff }: {
+  on: boolean | null; label: string; pending: boolean; disabled: boolean; onTurnOn: () => void; onTurnOff: () => void;
+}) {
+  const { t } = useTranslation();
+  if (on === null) {
+    return (
+      <div className="seg power-seg" data-state="unknown">
+        <button disabled={disabled} onClick={onTurnOn}><Icon name="power" size={18} /> {t("action.turn_on")}</button>
+        <button disabled={disabled} onClick={onTurnOff}><Icon name="power" size={18} /> {t("action.turn_off")}</button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} className="pswitch"
+      data-state={on ? "on" : "off"} data-pending={pending} disabled={disabled}
+      onClick={on ? onTurnOff : onTurnOn}>
+      <span className="track" aria-hidden="true">
+        <span className="lbl on">I</span><span className="lbl off">O</span>
+        <span className="knob"><Icon name="power" size={18} strokeWidth={2.4} /></span>
+      </span>
+    </button>
+  );
+}
+
+const reportedBool = (v?: Value) =>
+  v && (v.quality === "good" || v.quality === "stale") && typeof v.value === "boolean" ? (v.value as boolean) : null;
+
 function SwitchCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const { t } = useTranslation();
   const v = view.attributes.on;
-  const known = v && (v.quality === "good" || v.quality === "stale") && typeof v.value === "boolean";
-  // The thumb follows the REPORTED state only; while a command is in flight it shimmers.
-  const state = known ? (v!.value ? "on" : "off") : "unknown";
   return (
-    <>
+    <div className="sw-line">
       <ValueView label={attrLabel(t, "on")} value={v} pending={pending} big />
-      <div className="toggle" data-state={state} data-pending={pending}>
-        <span className="thumb" aria-hidden="true" />
-        <button disabled={disabled} aria-pressed={state === "on"} onClick={() => send(cap, "turn_on")}>{t("action.turn_on")}</button>
-        <button disabled={disabled} aria-pressed={state === "off"} onClick={() => send(cap, "turn_off")}>{t("action.turn_off")}</button>
-      </div>
-    </>
+      <PowerSwitch on={reportedBool(v)} label={t("cap.switch")} pending={pending} disabled={disabled}
+        onTurnOn={() => send(cap, "turn_on")} onTurnOff={() => send(cap, "turn_off")} />
+    </div>
   );
 }
 
@@ -62,13 +89,17 @@ function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
       <ValueView label={attrLabel(t, "target_temp")} value={target} />
       <ValueView label={attrLabel(t, "mode")} value={view.attributes.mode} />
       <p className="muted" style={{ margin: 0 }}>{t("control.assumedNote")}</p>
-      <div className="row">
-        <button className="primary" disabled={disabled} onClick={() => send(cap, "set_power", { power: true })}>{t("action.turn_on")}</button>
-        <button disabled={disabled} onClick={() => send(cap, "set_power", { power: false })}>{t("action.turn_off")}</button>
-        <button disabled={disabled || base <= (spec.target_temp.minimum ?? 16)} aria-label="-1°C"
-          onClick={() => send(cap, "set_target_temp", { target_temp: base - 1 })}>−</button>
-        <button disabled={disabled || base >= (spec.target_temp.maximum ?? 30)} aria-label="+1°C"
-          onClick={() => send(cap, "set_target_temp", { target_temp: base + 1 })}>+</button>
+      <div className="sw-line">
+        <span className="muted">{t("attr.power")}</span>
+        <PowerSwitch on={reportedBool(view.attributes.power)} label={t("attr.power")} pending={pending} disabled={disabled}
+          onTurnOn={() => send(cap, "set_power", { power: true })} onTurnOff={() => send(cap, "set_power", { power: false })} />
+      </div>
+      <div className="stepper">
+        <button className="round" disabled={disabled || base <= (spec.target_temp.minimum ?? 16)} aria-label="-1°C"
+          onClick={() => send(cap, "set_target_temp", { target_temp: base - 1 })}><Icon name="minus" /></button>
+        <span className="temp"><Icon name="snow" size={18} /> {typeof target?.value === "number" ? `${base}°` : "—"}</span>
+        <button className="round" disabled={disabled || base >= (spec.target_temp.maximum ?? 30)} aria-label="+1°C"
+          onClick={() => send(cap, "set_target_temp", { target_temp: base + 1 })}><Icon name="plus" /></button>
       </div>
       <div className="row">
         <select aria-label={t("attr.mode")} disabled={disabled} defaultValue=""
@@ -86,6 +117,8 @@ function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
   );
 }
 
+const ACTION_ICON: Record<string, string> = { open: "up", close: "down", stop: "stop", lock: "lock", unlock: "unlock" };
+
 function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & { actions: string[] }) {
   const { t } = useTranslation();
   const confirmAttr = CAPABILITIES[cap].confirm_attribute;
@@ -99,7 +132,7 @@ function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & 
       <div className="seg">
         {actions.map((a, i) => (
           <button key={a} className={i === 0 ? "primary" : ""} disabled={disabled}
-            onClick={() => send(cap, a)}>{t(`action.${a}`)}</button>
+            onClick={() => send(cap, a)}><Icon name={cap === "contactor" ? "power" : ACTION_ICON[a] ?? "power"} size={18} /> {t(`action.${a}`)}</button>
         ))}
       </div>
     </>
@@ -126,8 +159,8 @@ function ValveCtl({ cap, view, send, disabled, pending }: CtlProps) {
       <div className="row">
         <button className="primary" disabled={disabled || !valid}
           title={valid ? undefined : t("control.durationRequired")}
-          onClick={() => send(cap, "open", { duration_s: m * 60 })}>{t("action.open")}</button>
-        <button disabled={disabled} onClick={() => send(cap, "close")}>{t("action.close")}</button>
+          onClick={() => send(cap, "open", { duration_s: m * 60 })}><Icon name="drop" size={18} /> {t("action.open")}</button>
+        <button disabled={disabled} onClick={() => send(cap, "close")}><Icon name="stop" size={18} /> {t("action.close")}</button>
       </div>
     </>
   );

@@ -1,0 +1,185 @@
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { CapabilityView, Device, Role } from "../api/types";
+import { useCommand } from "../lib/commands";
+import { CAPABILITIES, can, hasFeedback } from "../lib/contracts";
+import { useSession } from "../auth/session";
+import { CommandStatus } from "./CommandStatus";
+import { PinDialog } from "./PinDialog";
+import { ValueView } from "./ValueView";
+
+type Send = (cap: string, action: string, params?: Record<string, unknown>) => void;
+
+interface CtlProps { device: Device; cap: string; view: CapabilityView; send: Send; disabled: boolean; pending: boolean }
+
+const attrLabel = (t: (k: string) => string, a: string) => t(`attr.${a}`);
+
+function SwitchCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <ValueView label={attrLabel(t, "on")} value={view.attributes.on} pending={pending} big />
+      <div className="row">
+        <button className="primary" disabled={disabled} onClick={() => send(cap, "turn_on")}>{t("action.turn_on")}</button>
+        <button disabled={disabled} onClick={() => send(cap, "turn_off")}>{t("action.turn_off")}</button>
+      </div>
+    </>
+  );
+}
+
+function DimmerCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  const current = view.attributes.brightness;
+  const known = typeof current?.value === "number" ? (current.value as number) : 50;
+  const [draft, setDraft] = useState<number>(known);
+  return (
+    <>
+      <ValueView label={attrLabel(t, "brightness")} value={current} pending={pending} />
+      <div className="row">
+        <input type="range" min={0} max={100} value={draft} aria-label={t("attr.brightness")}
+          onChange={(e) => setDraft(Number(e.target.value))} style={{ flex: 1 }} disabled={disabled} />
+        <span style={{ minWidth: 44 }}>{draft}%</span>
+        <button disabled={disabled} onClick={() => send(cap, "set_brightness", { brightness: draft })}>{t("action.set_brightness")}</button>
+      </div>
+    </>
+  );
+}
+
+function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  const spec = CAPABILITIES.climate.attributes;
+  const target = view.attributes.target_temp;
+  const base = typeof target?.value === "number" ? (target.value as number) : 24;
+  return (
+    <>
+      <ValueView label={attrLabel(t, "current_temp")} value={view.attributes.current_temp} big />
+      <ValueView label={attrLabel(t, "power")} value={view.attributes.power} pending={pending} />
+      <ValueView label={attrLabel(t, "target_temp")} value={target} />
+      <ValueView label={attrLabel(t, "mode")} value={view.attributes.mode} />
+      <p className="muted" style={{ margin: 0 }}>{t("control.assumedNote")}</p>
+      <div className="row">
+        <button className="primary" disabled={disabled} onClick={() => send(cap, "set_power", { power: true })}>{t("action.turn_on")}</button>
+        <button disabled={disabled} onClick={() => send(cap, "set_power", { power: false })}>{t("action.turn_off")}</button>
+        <button disabled={disabled || base <= (spec.target_temp.minimum ?? 16)} aria-label="-1°C"
+          onClick={() => send(cap, "set_target_temp", { target_temp: base - 1 })}>−</button>
+        <button disabled={disabled || base >= (spec.target_temp.maximum ?? 30)} aria-label="+1°C"
+          onClick={() => send(cap, "set_target_temp", { target_temp: base + 1 })}>+</button>
+      </div>
+      <div className="row">
+        <select aria-label={t("attr.mode")} disabled={disabled} defaultValue=""
+          onChange={(e) => e.target.value && send(cap, "set_mode", { mode: e.target.value })}>
+          <option value="" disabled>{t("attr.mode")}</option>
+          {(spec.mode.enum ?? []).map((m) => <option key={m} value={m}>{t(`enum.${m}`)}</option>)}
+        </select>
+        <select aria-label={t("attr.fan")} disabled={disabled} defaultValue=""
+          onChange={(e) => e.target.value && send(cap, "set_fan", { fan: e.target.value })}>
+          <option value="" disabled>{t("attr.fan")}</option>
+          {(spec.fan.enum ?? []).map((m) => <option key={m} value={m}>{t(`enum.${m}`)}</option>)}
+        </select>
+      </div>
+    </>
+  );
+}
+
+function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & { actions: string[] }) {
+  const { t } = useTranslation();
+  const confirmAttr = CAPABILITIES[cap].confirm_attribute;
+  return (
+    <>
+      {Object.keys(view.attributes).map((a) => (
+        <ValueView key={a} label={attrLabel(t, a)} value={view.attributes[a]}
+          pending={pending && a === confirmAttr} big={a === confirmAttr} />
+      ))}
+      {cap === "contactor" && <p className="muted" style={{ margin: 0 }}>{t("control.auxNote")}</p>}
+      <div className="row">
+        {actions.map((a, i) => (
+          <button key={a} className={i === 0 ? "primary" : ""} disabled={disabled}
+            onClick={() => send(cap, a)}>{t(`action.${a}`)}</button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ValveCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  const maxRuntime = Number(view.config.max_runtime_s ?? CAPABILITIES.valve.actions.open.params.properties?.duration_s?.maximum ?? 3600);
+  const maxMin = Math.floor(maxRuntime / 60);
+  const [minutes, setMinutes] = useState("");
+  const m = Number(minutes);
+  const valid = minutes !== "" && Number.isInteger(m) && m >= 1 && m <= maxMin;
+  return (
+    <>
+      <ValueView label={attrLabel(t, "open")} value={view.attributes.open} pending={pending} big />
+      <ValueView label={attrLabel(t, "flow")} value={view.attributes.flow} />
+      <ValueView label={attrLabel(t, "remaining_s")} value={view.attributes.remaining_s} />
+      <label>{t("control.durationMin")}
+        <input type="number" inputMode="numeric" min={1} max={maxMin} value={minutes}
+          onChange={(e) => setMinutes(e.target.value)} disabled={disabled} />
+        <span className="muted">{t("control.maxRuntime", { max: maxMin })}</span>
+      </label>
+      <div className="row">
+        <button className="primary" disabled={disabled || !valid}
+          title={valid ? undefined : t("control.durationRequired")}
+          onClick={() => send(cap, "open", { duration_s: m * 60 })}>{t("action.open")}</button>
+        <button disabled={disabled} onClick={() => send(cap, "close")}>{t("action.close")}</button>
+      </div>
+    </>
+  );
+}
+
+function ReadOnlyCtl({ view }: CtlProps) {
+  const { t } = useTranslation();
+  return <>{Object.keys(view.attributes).map((a) => <ValueView key={a} label={attrLabel(t, a)} value={view.attributes[a]} />)}</>;
+}
+
+const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
+  switch: SwitchCtl,
+  dimmer: DimmerCtl,
+  climate: ClimateCtl,
+  valve: ValveCtl,
+  cover: (p) => <ButtonsCtl {...p} actions={["open", "stop", "close"]} />,
+  lock: (p) => <ButtonsCtl {...p} actions={["unlock", "lock"]} />,
+  contactor: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
+};
+
+export function DeviceControls({ device, role, compact = false }: { device: Device; role?: Role; compact?: boolean }) {
+  const { t } = useTranslation();
+  const me = useSession((s) => s.me);
+  const { send, tracked, busy } = useCommand(device.id);
+  const [pinFor, setPinFor] = useState<{ cap: string; action: string; params?: Record<string, unknown> } | null>(null);
+
+  const doSend: Send = (cap, action, params) => {
+    if (CAPABILITIES[cap]?.risk === "high") { setPinFor({ cap, action, params }); return; }
+    void send(cap, action, params).catch(() => undefined);
+  };
+  const caps = Object.keys(device.capabilities);
+  const offline = !device.hub_online || device.availability.status === "offline" || !device.enabled;
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {caps.map((cap) => {
+        const view = device.capabilities[cap];
+        const Ctl = CONTROLS[cap] ?? ReadOnlyCtl;
+        const allowed = can(role, view.permission);
+        const isControl = Object.keys(CAPABILITIES[cap]?.actions ?? {}).length > 0;
+        const pending = !!tracked && tracked.capability === cap &&
+          (["sending", "queued", "sent"].includes(tracked.status) ||
+            (tracked.status === "acked" && hasFeedback(cap)));
+        return (
+          <section key={cap} aria-label={t(`cap.${cap}`)} style={{ display: "grid", gap: 8 }}>
+            {!compact && caps.length > 1 && <strong>{t(`cap.${cap}`)}</strong>}
+            <Ctl device={device} cap={cap} view={view} send={doSend}
+              disabled={!allowed || busy || offline} pending={pending} />
+            {isControl && !allowed && <span className="muted">{t("control.readOnly")}</span>}
+          </section>
+        );
+      })}
+      <CommandStatus tracked={tracked} />
+      {pinFor && !me?.has_pin && <p className="error">{t("control.noPin")}</p>}
+      <PinDialog open={!!pinFor && !!me?.has_pin} action={pinFor ? t(`action.${pinFor.action}`) : ""}
+        onCancel={() => setPinFor(null)}
+        onSubmit={(pin) => { const p = pinFor!; setPinFor(null); void send(p.cap, p.action, p.params, pin).catch(() => undefined); }} />
+    </div>
+  );
+}

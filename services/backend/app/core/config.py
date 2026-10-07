@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # What the PWA connects to, e.g. wss://xxxx.ala.eu-central-1.emqxsl.com:8084/mqtt
     realtime_wss_url: Optional[str] = None
     realtime_credentials_ttl_s: int = 12 * 3600
+    # ADR 0009: refresh token cookie for the PWA
+    cookie_secure: bool = True
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":
@@ -91,6 +93,8 @@ class Settings(BaseSettings):
                         problems.append(f"{name.upper()}: required for emqx_serverless")
                 if self.realtime_wss_url and not self.realtime_wss_url.startswith("wss://"):
                     problems.append("REALTIME_WSS_URL must use wss://")
+            if not self.cookie_secure:
+                problems.append("COOKIE_SECURE must be true in production")
             if self.jwt_secret and self.jwt_secret == self.signing_master_key:
                 problems.append("JWT_SECRET and SIGNING_MASTER_KEY must differ")
             if problems:

@@ -16,6 +16,7 @@ Qabul qilingan ADR o'zgartirilmaydi — yangi ADR bilan almashtiriladi.
 | [0006](0006-video-stays-home.md) | Video uydan chiqmaydi | qabul qilingan |
 | [0007](0007-command-envelope-fields.md) | Buyruq payload'iga `device_key` va `capability` | qabul qilingan |
 | [0008](0008-managed-mqtt-emqx-serverless.md) | Managed MQTT: EMQX Cloud Serverless (polling zaxira) | qabul qilingan |
+| [0009](0009-web-token-storage.md) | PWA: access xotirada, refresh `HttpOnly` cookie | qabul qilingan |
 
 ## Shablon
 

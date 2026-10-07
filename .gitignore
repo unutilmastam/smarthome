@@ -17,3 +17,6 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+test-results/
+playwright-report/
+*.tsbuildinfo

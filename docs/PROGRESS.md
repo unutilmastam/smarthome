@@ -11,7 +11,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 3 | Buyruqlar (imzo, hayot sikli, Hub API) | tugadi `[SIM]` |
 | 4 | Home Hub + simulyator | tugadi `[SIM]`, CI yashil (Docker image build sinalmagan) |
 | 5 | Real-time (managed MQTT) | qisman: `[SIM]` tugadi, haqiqiy EMQX hisobida sinalmagan |
-| 6 | PWA | boshlanmagan |
+| 6 | PWA (veb + telefon + iPad) | tugadi `[SIM]` (haqiqiy telefon/iPad'da emas, emulyatsiyada) |
+| 7 | cPanel'ga deploy | boshlanmagan |
 
 ---
 
@@ -374,3 +375,55 @@ Egasi bajarishi kerak bo'lgan qo'lda qadamlar (iPad'dan):
 5. Hub `.env` ga `CLOUD_MQTT_*` yozish.
 
 Keyingi faza: 6 — PWA.
+
+---
+
+## Faza 6 — PWA (veb + telefon + iPad) — 2026-10-07
+Holat: tugadi `[SIM]`. Ilova haqiqiy backend, Hub, Mosquitto va simulyator bilan Chromium'da **telefon (Pixel 7) va iPad emulyatsiyasida** sinaldi. Haqiqiy iPhone/iPad'da va Safari'da sinalmagan. iOS'ga o'rnatish va Web Push Faza 7 dan keyin, haqiqiy domen va HTTPS bilan tekshiriladi.
+
+Qilingan ishlar:
+- ADR 0009: access token faqat JS xotirasida. Refresh token `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth` cookie'da. Brauzer `X-Client: web` sarlavhasini yuboradi (CSRF himoyasi); body rejimi Hub va CLI uchun saqlanib qoldi. Production'da `COOKIE_SECURE=false` bilan ilova ishga tushmaydi.
+- Backend'ga qo'shildi: cookie rejimi, `GET /auth/sessions`, `DELETE /auth/sessions/{id}`.
+- `apps/web` (React 18 + TS + Vite, TanStack Query, zustand, i18next, vite-plugin-pwa):
+  - Ekranlar: login, bosh sahifa (★ bilan sozlanadigan kartalar), xonalar, qurilmalar markazi (qidiruv; tur, holat va xona bo'yicha filtr), qurilma sahifasi (barcha qiymatlar va buyruqlar tarixi), Hub holati, sozlamalar (til, mavzu, PIN, parol, sessiyalar, hamma joydan chiqish), a'zolar (faqat owner).
+  - Boshqaruv elementlari capability'ga qarab avtomatik chiziladi:
+    - switch, dimmer;
+    - climate — IR, "taxminiy" belgisi bilan;
+    - cover, lock, contactor — **PIN dialogi** bilan; kontaktorda holat faqat yordamchi kontakt bo'yicha ko'rsatiladi;
+    - valve — **davomiylik majburiy**, qurilmaning `max_runtime_s` i bilan cheklangan;
+    - sensorlar faqat ko'rsatiladi.
+  - Holat belgilari: ✓ / ⏳ / ≈ / ⚠ / ? / "Qo'llab-quvvatlanmaydi". Noma'lum qiymat "—" bo'lib ko'rinadi, hech qachon "0" yoki "O'chirilgan" bo'lib emas.
+  - Hub offline bo'lsa yoki Hub ulanmagan bo'lsa banner chiqadi va boshqaruv o'chiriladi.
+  - Buyruq yuborilganda optimistik yangilanish **yo'q**: `queued → sent → acked → confirmed` bosqichlari haqiqiy backend holati bo'yicha ko'rsatiladi. Qurilma qiymati faqat qurilma xabar qilgandan keyin o'zgaradi.
+  - Real-time: `/realtime/credentials` yoqilgan bo'lsa mqtt.js (WSS) ulanadi. Ilova fon holatiga o'tsa ulanish uziladi (bepul limitni tejash uchun). Realtime bo'lmasa har 3 s da polling. mqtt.js faqat kerak bo'lganda yuklanadi.
+  - Lokal rejim: ilova `hub.local` dan ochilgan bo'lsa banner chiqadi. HTTPS sahifadan `http://hub.local` ni tekshirib bo'lmaydi (mixed content) — bu ADR 0003 dagi ochiq savol.
+  - PWA: manifest, ikonkalar (SVG + PNG 192/512/180), offline sahifa. Service worker API javoblarini **keshlamaydi**, shunda eskirgan holat haqiqiy bo'lib ko'rinmaydi.
+  - i18n: uz to'liq; ru va en ham to'liq tarjima qilindi; uchala tildagi kalitlar bir xil ekanini test tekshiradi.
+  - Dizayn tokenlari (CSS o'zgaruvchilari), dark/light/system mavzu, 44 px tugmalar, `safe-area` qo'llab-quvvatlanadi.
+
+Testlar paytida topilgan va tuzatilgan xatolar:
+1. `not_supported` qiymat "—" bo'lib chiqib, "Qo'llab-quvvatlanmaydi" yozuvi ko'rinmagan (tekshiruvlar tartibi noto'g'ri edi). Unit test topdi.
+2. Bosh sahifadagi zustand selektori har renderda yangi `[]` qaytargani uchun cheksiz render sikli bo'lgan (React #185). E2E topdi. Tuzatildi va regressiya testi qo'shildi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `docs/decisions/0009-web-token-storage.md`
+- `services/backend/app/api/v1/auth.py`, `app/services/auth.py`, `app/core/config.py`, `tests/test_web_auth.py`, `tests/conftest.py`
+- `apps/web/` — `package.json` (versiyalar qotirilgan), `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `playwright.config.ts`, `index.html`, `public/*`, `src/**` (api, auth, i18n, lib, components, pages, theme, test), `e2e/{stack.py,light.spec.ts,screens.spec.ts}`
+- `services/hub/gateway/__main__.py` (httpx log'i jim), `.github/workflows/test.yml` (`web` job), `.gitignore`
+
+Testlar (lokal):
+- `npx tsc -b` → xatosiz.
+- `npx vitest run` → 21 passed: holat belgilari, "qiymat o'ylab topilmaydi", optimistik emaslik, HUB_UNREACHABLE xabari, viewer cheklovi, Hub offline, PIN oqimi va bekor qilish, PIN o'rnatilmagan holat, klapan davomiyligi, IR "taxminiy", 401 → refresh → qayta so'rov, tokenlar web storage'da yo'qligi, i18n kalitlari.
+- `npx playwright test` → 4 passed (telefon va iPad emulyatsiyasi × 2 stsenariy) [SIM]:
+  - login → chiroqni yoqish → `confirmed` → sahifani yangilash (sessiya cookie orqali tiklanadi) → o'chirish;
+  - darvoza → PIN → gerkon bilan `confirmed` → yopish.
+- E2E ketma-ket 15 marta ishga tushirildi: 14 marta 4/4, **1 marta 3/4**. O'sha muvaffaqiyatsizlikning log'i saqlanmagan (`tail -1` bilan ishga tushirilgan edi), sababi **aniqlanmadi**. Shundan keyingi 12 ishga tushirish 4/4. Playwright `retries: 0` qoldirildi (xato yashirilmaydi), CI'da xato bo'lsa trace saqlanadi.
+- `cd services/backend && pytest` → 230 passed (SQLite + PostgreSQL).
+
+Hal qilinmagan xavflar:
+- E2E'da bir marta sababi noma'lum muvaffaqiyatsizlik bo'ldi (yuqorida).
+- Haqiqiy iOS Safari'da sinalmagan: PWA o'rnatish, `dialog` elementi va cookie xatti-harakati.
+- Lokal rejim (`hub.local`) faqat aniqlash darajasida. Hub'da `local-api` yo'q, shuning uchun internetsiz telefondan boshqarish **hali ishlamaydi**.
+- Web Push va bildirishnomalar — Faza 13.
+
+Keyingi faza: 7 — cPanel'ga deploy (hostmaster.uz).

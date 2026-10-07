@@ -153,15 +153,15 @@ Tugash mezoni: broker o'chirilganda ham tizim ishlaydi; yoqilganda holat < 2 s d
 **Maqsad:** haqiqiy backend bilan ishlaydigan ilova. Soxta ekran yo'q.
 
 Vazifalar:
-- [ ] React + TypeScript + Vite, TanStack Query, i18next (`uz` to'liq, `ru`/`en` kalitlar tayyor), dark/light, dizayn tokenlari.
-- [ ] Ekranlar: login, dashboard (sozlanadigan kartalar), xonalar/zonalar, qurilmalar markazi (qidiruv, filtr), qurilma sahifasi, buyruq tarixi, Hub holati, sozlamalar (PIN, parol, sessiyalar), a'zolar (owner).
-- [ ] Boshqaruv elementlari capability'dan avtomatik: switch, dimmer, climate, cover (PIN so'raydi), valve (davomiylik majburiy), sensorlar.
-- [ ] Holat belgilari: ✓ tasdiqlangan, ⏳ kutilmoqda, ≈ taxminiy, ⚠ eskirgan, ? noma'lum, "Qo'llab-quvvatlanmaydi", Hub offline banneri.
-- [ ] Buyruq tugmasi bosilganda: optimistik emas — `queued → sent → acked → confirmed` holatini ko'rsatadi.
-- [ ] Token: access xotirada, refresh xavfsiz saqlash (ADR'da yoziladi), avtomatik yangilash.
-- [ ] Lokal rejim: `hub.local` mavjud bo'lsa unga ulanadi (Hub local-api keyingi fazalarda to'ldiriladi; hozircha aniqlash va banner).
-- [ ] PWA: manifest, ikonkalar, offline sahifa, iOS'ga o'rnatish.
-- [ ] Testlar: Vitest + Testing Library (holat belgilari, PIN oqimi), Playwright: login → chiroq yoqish `[SIM]`.
+- [x] React + TypeScript + Vite, TanStack Query, i18next (`uz` to'liq, `ru`/`en` kalitlar tayyor), dark/light, dizayn tokenlari.
+- [x] Ekranlar: login, dashboard (sozlanadigan kartalar), xonalar/zonalar, qurilmalar markazi (qidiruv, filtr), qurilma sahifasi, buyruq tarixi, Hub holati, sozlamalar (PIN, parol, sessiyalar), a'zolar (owner).
+- [x] Boshqaruv elementlari capability'dan avtomatik: switch, dimmer, climate, cover (PIN so'raydi), valve (davomiylik majburiy), sensorlar.
+- [x] Holat belgilari: ✓ tasdiqlangan, ⏳ kutilmoqda, ≈ taxminiy, ⚠ eskirgan, ? noma'lum, "Qo'llab-quvvatlanmaydi", Hub offline banneri.
+- [x] Buyruq tugmasi bosilganda: optimistik emas — `queued → sent → acked → confirmed` holatini ko'rsatadi.
+- [x] Token: access xotirada, refresh xavfsiz saqlash (ADR'da yoziladi), avtomatik yangilash.
+- [~] Lokal rejim: `hub.local` mavjud bo'lsa unga ulanadi (Hub local-api keyingi fazalarda to'ldiriladi; hozircha aniqlash va banner).
+- [x] PWA: manifest, ikonkalar, offline sahifa, iOS'ga o'rnatish.
+- [x] Testlar: Vitest + Testing Library (holat belgilari, PIN oqimi), Playwright: login → chiroq yoqish `[SIM]`.
 
 Tugash mezoni: simulyator qurilmalari telefon va iPad'dan boshqariladi.
 

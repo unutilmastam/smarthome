@@ -40,7 +40,7 @@ def backend(request):
 
 @pytest.fixture
 def settings():
-    return Settings(_env_file=None, env="test")
+    return Settings(_env_file=None, env="test", cookie_secure=False)
 
 
 @pytest.fixture

@@ -84,3 +84,42 @@ jobs:
         run: |
           cp .env.example .env && touch mosquitto/passwd
           SIM_DEVICE_PASSWORD=ci docker compose --profile sim config -q
+
+  web:
+    name: web (typecheck, unit, build, e2e [SIM])
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          npm ci
+          sudo apt-get update -q && sudo apt-get install -y -q mosquitto
+          sudo systemctl stop mosquitto || true
+          python -m pip install -r ../../services/backend/requirements.txt -r ../../services/hub/requirements.txt
+          npx playwright install --with-deps chromium
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Unit tests (Vitest)
+        run: npx vitest run
+      - name: Build
+        run: npx vite build
+      - name: E2E (Playwright, phone + iPad, full stack [SIM])
+        run: npx playwright test
+        env:
+          PYTHON: python
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-traces
+          path: apps/web/test-results

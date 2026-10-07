@@ -170,3 +170,23 @@ def set_pin(db: Session, user: User, password: str, pin: str, ip: Optional[str])
     user.pin_hash = hash_secret(pin)
     audit.record(db, "auth.pin.set", actor_id=user.id, ip=ip)
     db.commit()
+
+
+def active_sessions(db: Session, user: User) -> list:
+    return db.scalars(
+        select(AuthSession).where(AuthSession.user_id == user.id,
+                                  AuthSession.revoked_at.is_(None),
+                                  AuthSession.expires_at > utcnow())
+        .order_by(AuthSession.last_used_at.desc())).all()
+
+
+def revoke_session(db: Session, user: User, session_id: uuid.UUID, ip: Optional[str]) -> bool:
+    s = db.get(AuthSession, session_id)
+    if s is None or s.user_id != user.id or s.revoked_at is not None:
+        return False
+    s.revoked_at = utcnow()
+    s.revoke_reason = "revoked_by_user"
+    audit.record(db, "auth.session.revoked", actor_id=user.id, ip=ip, target_type="session",
+                 target_id=s.id)
+    db.commit()
+    return True

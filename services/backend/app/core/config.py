@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # acked but never confirmed (confirm_attribute capabilities) -> timeout
     command_confirm_timeout_s: int = 60
     command_rate_limit_per_min: int = 60
+    # Real-time (ADR 0008). "none" = polling only.
+    realtime_provider: str = "none"
+    emqx_api_base: Optional[str] = None
+    emqx_app_id: Optional[str] = None
+    emqx_app_secret: Optional[str] = None
+    # What the PWA connects to, e.g. wss://xxxx.ala.eu-central-1.emqxsl.com:8084/mqtt
+    realtime_wss_url: Optional[str] = None
+    realtime_credentials_ttl_s: int = 12 * 3600
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":
@@ -76,6 +84,13 @@ class Settings(BaseSettings):
                     )
                 elif any(marker in value.lower() for marker in INSECURE_MARKERS):
                     problems.append(f"{name.upper()}: development/placeholder value")
+            if self.realtime_provider == "emqx_serverless":
+                for name in ("emqx_api_base", "emqx_app_id", "emqx_app_secret",
+                             "realtime_wss_url"):
+                    if not getattr(self, name):
+                        problems.append(f"{name.upper()}: required for emqx_serverless")
+                if self.realtime_wss_url and not self.realtime_wss_url.startswith("wss://"):
+                    problems.append("REALTIME_WSS_URL must use wss://")
             if self.jwt_secret and self.jwt_secret == self.signing_master_key:
                 problems.append("JWT_SECRET and SIGNING_MASTER_KEY must differ")
             if problems:
@@ -86,6 +101,13 @@ class Settings(BaseSettings):
             if not self.signing_master_key:
                 self.signing_master_key = DEV_SIGNING_MASTER_KEY
         return self
+
+    @field_validator("realtime_provider")
+    @classmethod
+    def _provider(cls, v: str) -> str:
+        if v not in ("none", "emqx_serverless"):
+            raise ValueError("REALTIME_PROVIDER must be 'none' or 'emqx_serverless'")
+        return v
 
     @property
     def is_production(self) -> bool:

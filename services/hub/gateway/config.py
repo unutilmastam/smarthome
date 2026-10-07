@@ -24,6 +24,13 @@ class GatewaySettings(BaseSettings):
     mqtt_username: Optional[str] = "gateway"
     mqtt_password: Optional[str] = None
 
+    # Managed cloud broker (ADR 0008). Empty host = polling only.
+    cloud_mqtt_host: Optional[str] = None
+    cloud_mqtt_port: int = 8883
+    cloud_mqtt_tls: bool = True
+    cloud_mqtt_username: Optional[str] = None
+    cloud_mqtt_password: Optional[str] = None
+
     db_path: str = "hub.sqlite3"
     contracts_dir: Optional[Path] = None
 

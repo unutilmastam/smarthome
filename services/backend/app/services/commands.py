@@ -25,6 +25,7 @@ from app.models.command import RANK, TERMINAL
 from app.services import audit, rate_limit
 from app.services.device_view import hub_is_online, iso
 from app.services.devices import active_hub
+from app.services.realtime import NullRealtime, RealtimeError, topic_cmd
 
 PIN_FAIL_LIMIT = 5
 PIN_FAIL_WINDOW_S = 900
@@ -100,7 +101,7 @@ def _reject(code: str, status: int, message: str, details=None) -> ApiError:
 
 
 def create_command(db: Session, settings: Settings, contracts: Contracts, user: User,
-                   body, ip: Optional[str]) -> tuple:
+                   body, ip: Optional[str], realtime=None) -> tuple:
     """Returns (command, created: bool)."""
     rate_limit.hit(db, f"cmd:user:{user.id}", settings.command_rate_limit_per_min, 60)
 
@@ -206,7 +207,22 @@ def create_command(db: Session, settings: Settings, contracts: Contracts, user: 
         if existing is None:
             raise
         return existing, False
+    publish_command(db, realtime or NullRealtime(), cmd)
     return cmd, True
+
+
+def publish_command(db: Session, realtime, cmd: Command) -> None:
+    """Best-effort fast path (ADR 0008). Polling delivers the command anyway."""
+    if not realtime.enabled:
+        return
+    try:
+        realtime.publish(topic_cmd(cmd.home_id), cmd.envelope, qos=1, retain=False)
+        _event(db, cmd, "queued", "backend", applied=False,
+               detail="published to realtime broker")
+    except RealtimeError as exc:
+        _event(db, cmd, "queued", "backend", applied=False,
+               detail=f"realtime publish failed, polling will deliver: {exc}")
+    db.commit()
 
 
 # ---- expiry ---------------------------------------------------------------------------
@@ -289,9 +305,14 @@ def apply_ack(db: Session, hub: Hub, ack: dict) -> dict:
         # Another home's hub must not learn or touch foreign commands.
         return {"command_id": ack["command_id"], "result": "not_found"}
     if c.status == "queued":
-        _event(db, c, ACK_TO_STATUS[ack["status"]], "hub", applied=False,
-               reason=ack.get("reason"), detail="ignored: command was never delivered")
-        return {"command_id": str(c.id), "result": "ignored", "status": c.status}
+        # Delivered through the realtime broker before any poll claimed it (ADR 0008).
+        res = db.execute(
+            update(Command).where(Command.id == c.id, Command.status == "queued")
+            .values(status="sent", sent_at=utcnow(), hub_id=hub.id)
+            .execution_options(synchronize_session=False))
+        db.refresh(c)
+        if res.rowcount == 1:
+            _event(db, c, "sent", "hub", detail="delivered via realtime broker")
     applied = transition(db, c, ACK_TO_STATUS[ack["status"]], "hub", reason=ack.get("reason"),
                          detail=ack.get("detail"))
     return {"command_id": str(c.id), "result": "applied" if applied else "ignored",

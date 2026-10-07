@@ -61,13 +61,13 @@ class FlakyTransport(httpx.AsyncBaseTransport):
 
 
 class Stack:
-    def __init__(self, broker, tmp_path):
+    def __init__(self, broker, tmp_path, realtime=None, **gw_overrides):
         self.broker = broker
         settings = Settings(_env_file=None, env="test")
         engine = make_engine(f"sqlite:///{tmp_path / 'backend.db'}")
         Base.metadata.create_all(engine)
         self.database = Database(settings, engine=engine)
-        self.app = create_app(settings, self.database)
+        self.app = create_app(settings, self.database, realtime)
         self.phone = TestClient(self.app)
         with self.database.sessionmaker() as s:
             self.home_id = create_owner(s, "owner@example.com", "Owner", PASSWORD, "Uy").id
@@ -84,7 +84,7 @@ class Stack:
         hub = self.phone.post(f"/api/v1/homes/{self.home_id}/hubs", json={"name": "hub"})
         self.hub_info = hub.json()["data"]
         self.transport = FlakyTransport(httpx.ASGITransport(app=self.app))
-        self.gw_settings = GatewaySettings(
+        gw = dict(
             _env_file=None, backend_url="http://backend", hub_token=self.hub_info["hub_token"],
             signing_key_hex=self.hub_info["signing_key_hex"], mqtt_host=broker["host"],
             mqtt_port=broker["port"], mqtt_username="gateway", mqtt_password=GW_PASSWORD,
@@ -92,6 +92,8 @@ class Stack:
             poll_interval_s=0.2, poll_max_backoff_s=0.5, heartbeat_interval_s=0.5,
             config_refresh_s=1, flush_interval_s=0.2, full_report_interval_s=2,
             device_ack_timeout_s=2, default_confirm_timeout_s=3)
+        gw.update(gw_overrides)
+        self.gw_settings = GatewaySettings(**gw)
         client = httpx.AsyncClient(transport=self.transport, base_url="http://backend")
         self.gateway = Gateway(self.gw_settings,
                                backend=BackendClient("http://backend", self.hub_info["hub_token"],
@@ -257,7 +259,7 @@ def test_replayed_and_tampered_envelopes_never_execute(stack):
         with st.database.sessionmaker() as s:
             env = s.scalar(select(Command.envelope).where(Command.id == uuid.UUID(cid)))
         seen = len(st.sims["garden_lights"].commands_seen)
-        assert (await st.gateway.execute(env)) == "rejected:replay"
+        assert (await st.gateway.execute(env)) == "duplicate"
         forged = {**env, "payload": {**env["payload"], "command_id": str(uuid.uuid4()),
                                      "action": "turn_off"}}
         assert (await st.gateway.execute(forged)) == "rejected:bad_signature"

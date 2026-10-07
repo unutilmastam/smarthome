@@ -137,12 +137,12 @@ Tugash mezoni: to'liq zanjir `[SIM]` da ishlaydi.
 **Maqsad:** ilova holatni sekundiga ko'radi; buyruqlar tezroq yetadi.
 
 Vazifalar:
-- [ ] ADR: EMQX Serverless yoki HiveMQ (bepul limitlar, ACL va API tekshirilgan holda).
-- [ ] Cloud topiklar ARCHITECTURE 5-bo'lim. Hisoblar: `hub-{home}`, `backend`, `app-{user}` (**faqat o'qish**).
-- [ ] Backend buyruq yaratganda broker'ga ham e'lon qiladi (HTTP publish API — shared hostingda doimiy ulanish shart emas). Polling **zaxira bo'lib qoladi**.
-- [ ] Hub broker'dan buyruq oladi; bir xil `command_id` ikki yo'ldan kelsa bir marta bajariladi.
-- [ ] `GET /api/v1/realtime/credentials` — foydalanuvchiga qisqa muddatli, faqat o'qish uchun broker hisobi (yoki broker qo'llasa JWT).
-- [ ] Broker ishlamasa: hammasi polling bilan davom etadi (test).
+- [x] ADR: EMQX Serverless yoki HiveMQ (bepul limitlar, ACL va API tekshirilgan holda).
+- [x] Cloud topiklar ARCHITECTURE 5-bo'lim. Hisoblar: `hub-{home}`, `backend`, `app-{user}` (**faqat o'qish**).
+- [x] Backend buyruq yaratganda broker'ga ham e'lon qiladi (HTTP publish API — shared hostingda doimiy ulanish shart emas). Polling **zaxira bo'lib qoladi**.
+- [x] Hub broker'dan buyruq oladi; bir xil `command_id` ikki yo'ldan kelsa bir marta bajariladi.
+- [~] `GET /api/v1/realtime/credentials` (EMQX user/ACL API yo'llari tasdiqlanmagan) — foydalanuvchiga qisqa muddatli, faqat o'qish uchun broker hisobi (yoki broker qo'llasa JWT).
+- [x] Broker ishlamasa: hammasi polling bilan davom etadi (test).
 
 Tugash mezoni: broker o'chirilganda ham tizim ishlaydi; yoqilganda holat < 2 s da yetadi.
 

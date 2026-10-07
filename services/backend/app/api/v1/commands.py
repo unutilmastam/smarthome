@@ -6,7 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
-    Principal, client_ip, get_contracts, get_db, get_principal, membership_or_404,
+    Principal, client_ip, get_contracts, get_db, get_principal, get_realtime,
+    membership_or_404,
 )
 from app.core.config import Settings, get_settings
 from app.core.contracts import Contracts
@@ -23,8 +24,10 @@ router = APIRouter(tags=["commands"])
 @router.post("/commands", status_code=201)
 def post_command(body: CommandIn, request: Request, p: Principal = Depends(get_principal),
                  db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
-                 contracts: Contracts = Depends(get_contracts)):
-    cmd, created = create_command(db, settings, contracts, p.user, body, client_ip(request))
+                 contracts: Contracts = Depends(get_contracts),
+                 realtime=Depends(get_realtime)):
+    cmd, created = create_command(db, settings, contracts, p.user, body, client_ip(request),
+                                  realtime)
     if not created:
         return JSONResponse(ok(command_view(cmd), {"idempotent_replay": True}), status_code=200)
     return ok(command_view(cmd))

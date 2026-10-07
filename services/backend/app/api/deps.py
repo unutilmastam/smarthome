@@ -19,6 +19,10 @@ def get_db(request: Request) -> Iterator[Session]:
     yield from request.app.state.db.session()
 
 
+def get_realtime(request: Request):
+    return request.app.state.realtime
+
+
 def get_contracts(settings: Settings = Depends(get_settings)) -> Contracts:
     return load_contracts(str(settings.contracts_dir))
 

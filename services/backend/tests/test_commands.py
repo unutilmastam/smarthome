@@ -133,10 +133,18 @@ def test_invalid_ack_documents(owner, light, hub):
     assert hub.post("/api/v1/hub/acks", json={"acks": []}).status_code == 422
 
 
-def test_ack_before_delivery_is_ignored(owner, light, hub):
+def test_ack_for_command_delivered_via_broker(owner, light, hub):
+    """ADR 0008: the hub may get a command from the realtime broker before any poll."""
     c = owner.post("/api/v1/commands", json=cmd(light["id"])).json()["data"]
     r = hub.post("/api/v1/hub/acks", json={"acks": [ack(c["id"], "confirmed")]})
-    assert r.json()["data"]["results"][0]["result"] == "ignored"
+    assert r.json()["data"]["results"][0] == {"command_id": c["id"], "result": "applied",
+                                              "status": "confirmed"}
+    full = owner.get(f"/api/v1/commands/{c['id']}").json()["data"]
+    assert [e["status"] for e in full["events"] if e["applied"]] == \
+        ["queued", "sent", "confirmed"]
+    assert full["sent_at"] is not None
+    # A poll afterwards must not deliver it again.
+    assert hub.get("/api/v1/hub/commands").json()["data"] == []
 
 
 # ---- expiry / timeout ------------------------------------------------------------------

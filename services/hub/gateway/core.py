@@ -52,6 +52,10 @@ class Gateway:
         self.dirty: Dict[str, Set[tuple]] = {}
         self.dirty_availability: Set[str] = set()
         self.backend_ok = False
+        self.home_id: Optional[str] = (cached or {}).get("home", {}).get("id") if cached else None
+        self.cloud: Optional[aiomqtt.Client] = None
+        self.cloud_connected = asyncio.Event()
+        self.cloud_dirty: Set[str] = set()
         self._tasks: list = []
         self._stop = asyncio.Event()
 
@@ -59,7 +63,8 @@ class Gateway:
     async def run(self) -> None:
         self._tasks = [asyncio.create_task(c) for c in (
             self._mqtt_loop(), self._heartbeat_loop(), self._config_loop(),
-            self._poll_loop(), self._flush_loop(), self._full_report_loop())]
+            self._poll_loop(), self._flush_loop(), self._full_report_loop(),
+            self._cloud_loop(), self._cloud_publish_loop())]
         await self._stop.wait()
 
     async def stop(self) -> None:
@@ -72,6 +77,7 @@ class Gateway:
     # ---- config ------------------------------------------------------------------------
     def _apply_config(self, cfg: dict) -> None:
         self.devices = {d["key"]: d for d in cfg.get("devices", [])}
+        self.home_id = (cfg.get("home") or {}).get("id")
 
     async def refresh_config(self) -> None:
         cfg = await self.backend.config()
@@ -142,6 +148,12 @@ class Gateway:
             env, key=self.s.signing_key, contracts=self.contracts, store=self.store,
             devices=self.devices, availability=self.store.availability(), now=utcnow(),
             skew_s=self.s.clock_skew_s)
+        if not verdict.ok and verdict.reason == "replay":
+            # Same command seen before (polling + broker both deliver, ADR 0008) or a
+            # replay attack. Never executed again; no ack, so an in-flight command is
+            # not turned into "rejected" by its own duplicate.
+            log.info("duplicate/replayed command %s ignored", verdict.command_id)
+            return "duplicate"
         if not verdict.ok:
             log.warning("rejected %s: %s (%s)", verdict.command_id, verdict.reason,
                         verdict.detail)
@@ -254,6 +266,7 @@ class Gateway:
             if status in ("online", "offline"):
                 self.store.set_availability(key, status)
                 self.dirty_availability.add(key)
+                self.cloud_dirty.add(key)
             return
         try:
             msg = json.loads(raw)
@@ -299,6 +312,8 @@ class Gateway:
                 self.store.put_state(key, cap, attr, value, source, iso(ts))
                 self.dirty.setdefault(key, set()).add((cap, attr))
                 accepted.setdefault(cap, {})[attr] = value
+        if accepted:
+            self.cloud_dirty.add(key)
         if source != "reported":
             return  # assumed values never confirm a command
         for pend in list(self.pending.values()):
@@ -387,3 +402,83 @@ class Gateway:
                     if report["devices"]:
                         self.store.enqueue("report", report)
             self.store.purge_executed(self.s.executed_retention_days)
+
+    # ---- managed cloud broker (ADR 0008): fast path, never required ----------------------
+    async def _cloud_loop(self) -> None:
+        if not self.s.cloud_mqtt_host:
+            return
+        delay = 1.0
+        while True:
+            while not self.home_id:
+                await asyncio.sleep(0.5)
+            home = self.home_id
+            try:
+                tls = aiomqtt.TLSParameters() if self.s.cloud_mqtt_tls else None
+                async with aiomqtt.Client(
+                    hostname=self.s.cloud_mqtt_host, port=self.s.cloud_mqtt_port,
+                    username=self.s.cloud_mqtt_username, password=self.s.cloud_mqtt_password,
+                    identifier=f"hub-{home}", tls_params=tls,
+                ) as client:
+                    self.cloud = client
+                    await client.subscribe(f"sh/v1/{home}/cmd", qos=1)
+                    self.cloud_connected.set()
+                    self.cloud_dirty.update(self.store.availability())
+                    delay = 1.0
+                    async for msg in client.messages:
+                        try:
+                            env = json.loads(msg.payload)
+                        except ValueError:
+                            log.warning("non-JSON command from cloud broker")
+                            continue
+                        asyncio.create_task(self.execute(env))
+            except aiomqtt.MqttError as exc:
+                log.warning("cloud mqtt: %s (polling continues; retry in %.0fs)", exc, delay)
+            finally:
+                self.cloud_connected.clear()
+                self.cloud = None
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 60.0)
+
+    def cloud_messages(self, keys) -> list:
+        """Retained state/availability messages for the cloud broker (no telemetry history)."""
+        states = self.store.all_states()
+        avail = self.store.availability()
+        out = []
+        for key in sorted(keys):
+            dev = self.devices.get(key)
+            if dev is None:
+                continue
+            base = f"sh/v1/{self.home_id}/dev/{dev['id']}"
+            if key in avail:
+                out.append((f"{base}/availability",
+                            {"schema": 1, "device_key": key, "status": avail[key],
+                             "ts": iso(utcnow())}))
+            if states.get(key):
+                out.append((f"{base}/state", {
+                    "schema": 1, "device_key": key, "ts": iso(utcnow()),
+                    "states": {c: {a: self._value(v) for a, v in attrs.items()}
+                               for c, attrs in states[key].items()}}))
+        return out
+
+    async def _cloud_publish_loop(self) -> None:
+        if not self.s.cloud_mqtt_host:
+            return
+        last_health = 0.0
+        while True:
+            await asyncio.sleep(0.2)
+            client = self.cloud
+            if client is None or not self.cloud_connected.is_set():
+                continue
+            keys, self.cloud_dirty = self.cloud_dirty, set()
+            try:
+                for topic, payload in self.cloud_messages(keys):
+                    await client.publish(topic, json.dumps(payload), qos=1, retain=True)
+                loop_t = asyncio.get_running_loop().time()
+                if loop_t - last_health >= self.s.heartbeat_interval_s:
+                    last_health = loop_t
+                    await client.publish(f"sh/v1/{self.home_id}/hub/health",
+                                         json.dumps({"schema": 1, "ts": iso(utcnow()),
+                                                     **self.health()}), qos=1, retain=True)
+            except aiomqtt.MqttError as exc:
+                self.cloud_dirty |= keys
+                log.warning("cloud publish failed: %s", exc)

@@ -15,6 +15,7 @@ Qabul qilingan ADR o'zgartirilmaydi — yangi ADR bilan almashtiriladi.
 | [0005](0005-polling-first-mqtt-later.md) | Avval HTTPS polling, MQTT broker keyin (polling zaxira bo'lib qoladi) | qabul qilingan |
 | [0006](0006-video-stays-home.md) | Video uydan chiqmaydi | qabul qilingan |
 | [0007](0007-command-envelope-fields.md) | Buyruq payload'iga `device_key` va `capability` | qabul qilingan |
+| [0008](0008-managed-mqtt-emqx-serverless.md) | Managed MQTT: EMQX Cloud Serverless (polling zaxira) | qabul qilingan |
 
 ## Shablon
 

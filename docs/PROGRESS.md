@@ -9,8 +9,9 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 1 | Poydevor (monorepo, contracts, CI) | tugadi, CI yashil |
 | 2 | Backend asosi (auth, uy, xona, qurilma reyestri) | tugadi, CI yashil |
 | 3 | Buyruqlar (imzo, hayot sikli, Hub API) | tugadi `[SIM]` |
-| 4 | Home Hub + simulyator | tugadi `[SIM]` (Docker image build sinalmagan) |
-| 5 | Real-time (managed MQTT) | boshlanmagan |
+| 4 | Home Hub + simulyator | tugadi `[SIM]`, CI yashil (Docker image build sinalmagan) |
+| 5 | Real-time (managed MQTT) | qisman: `[SIM]` tugadi, haqiqiy EMQX hisobida sinalmagan |
+| 6 | PWA | boshlanmagan |
 
 ---
 
@@ -227,6 +228,8 @@ Hal qilinmagan xavflar:
 - Float qiymatli parametrlarning kanonik ko'rinishi Python `json` ga bog'liq. Hub ham Python bo'lgani uchun mos keladi. Boshqa tilda (masalan, ESP32) imzo tekshirilsa, float'lar ehtiyotkorlik talab qiladi; hozircha imzoni faqat Hub tekshiradi.
 - 1 s polling'da `last_seen` faqat 5 s da bir marta yoziladi (DB yozuvlarini kamaytirish uchun).
 
+CI: run #3 (commit `dd4b035`) → **success**.
+
 Keyingi faza: 4 — Home Hub + simulyator.
 
 ---
@@ -304,4 +307,70 @@ Hal qilinmagan xavflar:
 Tasdiqlanmagan taxminlar:
 - Hub apparati (N100 yoki Pi 5) noma'lum (H-02). Kod `python:3.12-slim` ustida ishlaydi; u amd64 va arm64 uchun mavjud, lekin arm64'da sinalmagan.
 
+CI: run #4 (commit `cb26ba8`) → **success**: 4 job — backend 3.10/3.12, hub 3.10/3.12; GitHub runner'ida apt orqali o'rnatilgan haqiqiy Mosquitto bilan.
+
 Keyingi faza: 5 — Real-time (managed MQTT).
+
+---
+
+## Faza 5 — Real-time (managed MQTT) — 2026-10-07
+Holat: **qisman**. Kod va `[SIM]` testlar tugadi. Haqiqiy EMQX Cloud Serverless hisobi yo'q (uni egasi ochishi kerak), shuning uchun haqiqiy broker bilan hech narsa sinalmagan.
+
+Qilingan ishlar:
+- ADR 0008 — EMQX Cloud Serverless tanlandi. Tekshirilgan ma'lumotlar:
+  - bepul tarif: oyiga 1M sessiya-daqiqa (≈ 23 ta doimiy ulangan mijoz) va 1 GB trafik;
+  - HTTP publish API bor;
+  - foydalanuvchi va ACL API bor;
+  - **JWT yo'q**.
+  
+  HiveMQ'ning bepul tarifida HTTP publish ham, foydalanuvchi API'si ham yo'q, shuning uchun u rad etildi.
+- Backend:
+  - `app/services/realtime.py` — EMQX HTTP API mijozi (basic auth AppID/AppSecret).
+  - Buyruq yaratilgach imzolangan konvert `sh/v1/{home}/cmd` ga **best-effort** e'lon qilinadi. Xato bo'lsa buyruq baribir yaratiladi, tarixga "polling will deliver" yoziladi va polling yetkazadi.
+- Hub broker'dan buyruq olib ack yuborsa (polling hali olmagan bo'lsa), backend buyruqni `sent` ga o'tkazadi ("delivered via realtime broker") va keyingi polling uni qayta bermaydi.
+- `GET /api/v1/realtime/credentials`:
+  - realtime yoqilmagan bo'lsa `{enabled: false, transport: "polling"}` qaytadi;
+  - yoqilgan bo'lsa `app-{user_id}` hisobi yaratiladi yoki yangilanadi; har so'rovda **yangi parol** beriladi;
+  - ACL: faqat a'zo bo'lgan uylarning `sh/v1/{home}/#` topiklariga `subscribe`, qolgan hamma narsa `deny`;
+  - broker ishlamasa → `503 REALTIME_UNAVAILABLE` + polling ko'rsatmasi;
+  - so'rov limiti: daqiqasiga 10.
+- Production konfiguratsiyasi: `REALTIME_PROVIDER=emqx_serverless` bo'lsa API base, App ID/Secret va `wss://` URL majburiy. Ular bo'lmasa ilova ishga tushmaydi.
+- Hub:
+  - ixtiyoriy cloud MQTT ulanishi (TLS, `hub-{home}` hisobi);
+  - `sh/v1/{home}/cmd` dan buyruq oladi;
+  - har bir qurilmaning to'liq holatini va availability'ni **retained** qilib e'lon qiladi;
+  - `hub/health` ni ham retained qilib e'lon qiladi;
+  - telemetriya broker'ga **yuborilmaydi**.
+  - Bir xil `command_id` ikki yo'ldan kelsa bir marta bajariladi. Takroriy nusxa jim tashlab yuboriladi (ack yo'q). Shu bilan buyruq o'zining nusxasi tufayli `rejected` bo'lib qolmaydi.
+- Hub oxirgi config'ni (`home_id` bilan birga) SQLite'da saqlaydi, shuning uchun internetsiz qayta ishga tushganda ham qurilmalarni biladi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `docs/decisions/0008-managed-mqtt-emqx-serverless.md`, `docs/decisions/README.md`
+- `services/backend/app/services/realtime.py`, `app/api/v1/realtime.py`, `app/services/commands.py`, `app/api/v1/commands.py`, `app/api/deps.py`, `app/main.py`, `app/core/config.py`, `.env.example`, `requirements*.txt` (httpx runtime'ga ko'chdi)
+- `services/backend/tests/test_realtime.py`, `tests/test_commands.py` (broker orqali yetkazilgan buyruq testi)
+- `services/hub/gateway/{core,config}.py`, `.env.example`
+- `services/hub/tests/{conftest,test_integration,test_realtime_chain}.py`
+
+Testlar (lokal). "Cloud broker" o'rnida ikkinchi haqiqiy Mosquitto ishlatildi, ya'ni bu `[SIM]`:
+- `services/hub`: 30 passed (Python 3.10 da ketma-ket 3 marta, Python 3.12 da 1 marta) [SIM]:
+  - polling 30 s ga qo'yilganda buyruq broker orqali **< 2 s** da `confirmed` bo'ladi;
+  - holat ilova-obunachiga **< 2 s** da yetadi (`reported/good`); telemetriya broker'da yo'q;
+  - broker o'chirilganda buyruq polling bilan `confirmed` bo'ladi;
+  - bir xil buyruq ikki yo'ldan kelganda qurilma uni faqat bir marta oladi va `rejected` voqeasi yo'q;
+  - Hub internetsiz qayta ishga tushganda keshlangan config ishlatiladi.
+- `services/backend`: 217 passed (SQLite + PostgreSQL) [SIM]. Ular orasida: EMQX so'rov formati (MockTransport), broker xatosi buyruqni to'xtatmasligi, credentials faqat o'qish uchun va boshqa uyni ko'rmasligi, parol rotatsiyasi, production konfiguratsiya tekshiruvi.
+
+Hal qilinmagan xavflar:
+- EMQX Serverless'ning foydalanuvchi va ACL endpoint yo'llari **tasdiqlanmagan** (hujjat sayti tarmoqdan bloklangan edi). Haqiqiy hisob ochilganda `/realtime/credentials` birinchi bo'lib sinalishi kerak.
+- JWT yo'qligi sababli `app-*` paroli muddatsiz. Paroli sizgan hisob baribir faqat o'qiy oladi. Eski hisoblarni tozalash cron'i yo'q (Faza 7).
+- Bepul limit: har bir ochiq PWA oynasi sessiya-daqiqa sarflaydi. PWA fon holatiga o'tganda ulanishni uzishi kerak (Faza 6).
+- Hub ↔ EMQX TLS sertifikati tizimning standart CA ro'yxati bilan tekshiriladi; real ulanish sinalmagan.
+
+Egasi bajarishi kerak bo'lgan qo'lda qadamlar (iPad'dan):
+1. EMQX Cloud → Serverless deployment yaratish.
+2. Authentication bo'limida `hub-<home_id>` foydalanuvchisini yaratish; ACL: `sh/v1/<home_id>/#` uchun pub/sub ruxsat.
+3. Standart avtorizatsiya qoidasini "deny" qilish.
+4. API bo'limida App ID/Secret yaratish → backend `.env` (`EMQX_*`, `REALTIME_WSS_URL`).
+5. Hub `.env` ga `CLOUD_MQTT_*` yozish.
+
+Keyingi faza: 6 — PWA.

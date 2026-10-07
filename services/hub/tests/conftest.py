@@ -29,25 +29,35 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture
-def broker(tmp_path):
-    """Real Mosquitto with the production ACL, anonymous access disabled."""
+class Broker(dict):
+    def stop(self):
+        self["proc"].terminate()
+        self["proc"].wait(5)
+
+
+def start_broker(tmp_path, name="local", acl=True, users=None):
     if not os.path.exists(MOSQUITTO):
         pytest.skip("mosquitto binary not installed")
     port = free_port()
-    passwd = tmp_path / "passwd"
+    d = tmp_path / name
+    d.mkdir(exist_ok=True)
+    passwd = d / "passwd"
     passwd.touch()
     passwd.chmod(0o600)
-    subprocess.run([MOSQUITTO_PASSWD, "-b", str(passwd), "gateway", GW_PASSWORD], check=True)
-    for key in DEVICE_KEYS:
-        subprocess.run([MOSQUITTO_PASSWD, "-b", str(passwd), key, SIM_PASSWORD], check=True)
-    conf = tmp_path / "mosquitto.conf"
+    if users is not None:
+        for u, pw in users.items():
+            subprocess.run([MOSQUITTO_PASSWD, "-b", str(passwd), u, pw], check=True)
+        acl_line = ""
+    else:
+        subprocess.run([MOSQUITTO_PASSWD, "-b", str(passwd), "gateway", GW_PASSWORD],
+                       check=True)
+        for key in DEVICE_KEYS:
+            subprocess.run([MOSQUITTO_PASSWD, "-b", str(passwd), key, SIM_PASSWORD], check=True)
+        acl_line = f"acl_file {HUB_DIR / 'mosquitto' / 'acl'}\n"
+    conf = d / "mosquitto.conf"
     conf.write_text(
         f"listener {port} 127.0.0.1\nallow_anonymous false\n"
-        f"password_file {passwd}\nacl_file {HUB_DIR / 'mosquitto' / 'acl'}\n"
-        "persistence false\n"
-        # When tests run as root, mosquitto would drop to user "mosquitto" and lose
-        # access to the 0600 password file.
+        f"password_file {passwd}\n{acl_line}persistence false\n"
         + (f"user {pwd.getpwuid(os.geteuid()).pw_name}\n" if os.geteuid() == 0 else ""))
     proc = subprocess.Popen([MOSQUITTO, "-c", str(conf)], stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
@@ -61,9 +71,26 @@ def broker(tmp_path):
     else:
         proc.kill()
         raise RuntimeError("mosquitto did not start")
-    yield {"host": "127.0.0.1", "port": port}
-    proc.terminate()
-    proc.wait(5)
+    return Broker(host="127.0.0.1", port=port, proc=proc)
+
+
+@pytest.fixture
+def broker(tmp_path):
+    """Real Mosquitto with the production ACL, anonymous access disabled."""
+    b = start_broker(tmp_path)
+    yield b
+    if b["proc"].poll() is None:
+        b.stop()
+
+
+@pytest.fixture
+def cloud_broker(tmp_path):
+    """Stand-in for the managed cloud broker (EMQX) — plain TCP, password auth."""
+    b = start_broker(tmp_path, "cloud", users={"hub": "hub-pw", "backend": "backend-pw",
+                                               "app": "app-pw"})
+    yield b
+    if b["proc"].poll() is None:
+        b.stop()
 
 
 @pytest.fixture

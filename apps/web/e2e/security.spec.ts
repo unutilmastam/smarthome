@@ -11,6 +11,9 @@ test("set up the alarm, arm at home with PIN, disarm", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Xavfsizlik", exact: true })).toBeVisible();
 
   const setup = page.getByRole("button", { name: "Signalizatsiyani sozlash" });
+  const state = page.getByTestId("alarm-state");
+  // isVisible() does not wait: first let the page load (either the setup card or the alarm).
+  await expect(setup.or(state)).toBeVisible({ timeout: 20_000 });
   if (await setup.isVisible()) {           // first run of the suite: configure it
     await setup.click();
     const dialog = page.getByRole("dialog");
@@ -21,7 +24,6 @@ test("set up the alarm, arm at home with PIN, disarm", async ({ page }) => {
     await dialog.getByRole("button", { name: "Saqlash" }).click();
     await expect(dialog).toHaveCount(0);
   }
-  const state = page.getByTestId("alarm-state");
   await expect(state).toHaveAttribute("data-state", "disarmed", { timeout: 20_000 });
   await expect(page.getByText("Kirish eshigi").first()).toBeVisible();
 

@@ -156,7 +156,7 @@ mqtt:
               }, 1, false);
             };
             if (cap != "climate") { ack("rejected", "invalid_params"); return; }
-            JsonObject p = x["params"].as<JsonObject>();
+            JsonObjectConst p = x["params"].as<JsonObjectConst>();
             auto call = id(ac).make_call();
             if (act == "set_power") {
               if (!p["power"].is<bool>()) { ack("rejected", "invalid_params"); return; }

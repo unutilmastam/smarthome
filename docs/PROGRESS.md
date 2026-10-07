@@ -12,7 +12,7 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 4 | Home Hub + simulyator | tugadi `[SIM]`, CI yashil (Docker image build sinalmagan) |
 | 5 | Real-time (managed MQTT) | qisman: `[SIM]` tugadi, haqiqiy EMQX hisobida sinalmagan |
 | 6 | PWA (veb + telefon + iPad) | tugadi `[SIM]` (haqiqiy telefon/iPad'da emas, emulyatsiyada) |
-| 7 | cPanel'ga deploy | qisman: hamma narsa tayyor va lokal sinaldi; **haqiqiy hostingga deploy qilinmagan** (SSH kaliti va GitHub Secrets egasida) |
+| 7 | cPanel'ga deploy | qisman: avtomatik deploy, zaxira va qaytish tayyor (ADR 0011), lokal PostgreSQL'da sinaldi; **haqiqiy hostingga deploy qilinmagan**: GitHub Secrets kiritilishi kutilmoqda |
 | 8 | Birinchi real qurilma (ESP32 rele) | qisman: proshivka, o'rnatish yo'riqnomasi va UI tayyor; **apparatda sinalmagan** (`[REAL]` jadval bo'sh) |
 | 9 | Elektr monitoring | qisman: `[SIM]` tugadi; haqiqiy hisoblagich bilan solishtirilmagan (`[REAL]` yo'q) |
 | 10 | Kameralar (lokal) | qisman: bulut tomoni va Hub monitoringi `[SIM]`; Frigate va kameralar apparatda sinalmagan |
@@ -629,3 +629,40 @@ Hal qilinmagan xavflar:
 - Family uchun `camera_live` sozlamasi (har bir a'zoga alohida) hali yo'q.
 
 Keyingi faza: 11 — Darvoza, konditsioner, xavfsizlik, sug'orish.
+
+---
+
+## Qo'shimcha: Avtomatik rejim va yangi dizayn — 2026-10-07
+Holat: tugadi `[SIM]`. Haqiqiy hostingda hali ishga tushmagan.
+
+Qilingan ishlar:
+- **Avtomatik deploy (ADR 0011).** `main` ga har bir merge'dan keyin quyidagi ketma-ketlik ishlaydi:
+  1. testlar;
+  2. migratsiyalar expand-only ekani tekshiriladi;
+  3. toza PostgreSQL'da `alembic upgrade head`;
+  4. `deploy.sh` stsenariylari sinaladi;
+  5. faqat hammasi o'tsa — serverda `pg_dump` (oxirgi 10 ta saqlanadi), so'ng kod → migratsiya → restart → `/api/v1/health` (aynan yangi build javob berishi shart);
+  6. xato bo'lsa — kod va DB zaxiradan avtomatik qaytariladi va Telegram'ga xabar ketadi.
+- Secrets yo'q bo'lsa, deploy job'i yiqilmaydi, faqat o'tkazib yuboriladi.
+- `CLAUDE.md` ga "Avtomatik rejim" bo'limi qo'shildi.
+- **PWA dizayni yangilandi:**
+  - SVG ikonkalar;
+  - holatga qarab rangli qurilma kartalari (chiroq, darvoza, sovutish, suv, quvvat, signal);
+  - siljiydigan animatsiyali yoqish/o'chirish tugmasi;
+  - buyruq bosqichlari animatsiyali stepper sifatida: Navbat → Hub → Qurilma → Tasdiq;
+  - telefonda pastki tab panel, iPad'da yon panel;
+  - bosh sahifada statistik plitkalar.
+- Statistika faqat tasdiqlangan (reported) qiymatlardan olinadi. Noma'lum qiymat "—" bo'lib ko'rinadi. Tugma "yoqilgan" holatini faqat qurilma tasdiqlagan holatdan oladi.
+- Animatsiyalar `prefers-reduced-motion` sozlamasida o'chadi.
+
+Testlar:
+- `deploy.sh` stsenariylari — 5/5 `[SIM]`, lokal PostgreSQL bilan: birinchi deploy, buzuq migratsiya → qaytish, buzuq ilova → kod va DB qaytishi, zaxira rotatsiyasi, lock va pg_dump xatosi.
+- Expand-only tekshiruvchi — 5 ta test.
+- Backend — 278 ta test.
+- Web vitest — 30 ta test.
+- Playwright E2E — 6 ta o'tdi (telefon + iPad emulyatsiyasi) `[SIM]`.
+
+Sinalmagan:
+- haqiqiy hostmaster.uz serverida deploy va qaytish;
+- Telegram xabarlari (bot tokeni hali yo'q);
+- dizayn haqiqiy telefon va iPad'da (faqat emulyatsiyada ko'rildi).

@@ -1,0 +1,58 @@
+# ESP32 + PZEM-004T v3 (Modbus over UART) — single-phase meter (ARCHITECTURE 10).
+# Measures V, A, W, kWh, PF, Hz. Publishes TELEMETRY (not retained) every 10 s.
+# The PZEM shunt/CT must be installed by a qualified electrician (H-08).
+substitutions:
+  device_key: main_meter
+  friendly_name: "Asosiy hisoblagich"
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+uart:
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 9600
+
+modbus:
+
+sensor:
+  - platform: pzemac
+    update_interval: 10s
+    voltage: { id: v, name: voltage, state_topic: null }
+    current: { id: a, name: current, state_topic: null }
+    power: { id: w, name: power, state_topic: null }
+    energy:
+      id: wh
+      name: energy
+      state_topic: null
+    power_factor: { id: pf, name: power_factor, state_topic: null }
+    frequency: { id: hz, name: frequency, state_topic: null }
+
+interval:
+  - interval: 10s
+    then:
+      - if:
+          # No reading yet (NaN) -> publish nothing; never invent a value.
+          condition:
+            lambda: 'return !std::isnan(id(v).state);'
+          then:
+            - mqtt.publish_json:
+                topic: home/${device_key}/telemetry
+                qos: 0
+                payload: |-
+                  root["schema"] = 1;
+                  root["source"] = "reported";
+                  JsonObject m = root["states"]["power_meter"].to<JsonObject>();
+                  m["voltage"] = id(v).state;
+                  m["current"] = id(a).state;
+                  m["power"] = id(w).state;
+                  m["energy"] = id(wh).state / 1000.0;   // Wh -> kWh
+                  if (!std::isnan(id(pf).state)) m["power_factor"] = id(pf).state;
+                  if (!std::isnan(id(hz).state)) m["frequency"] = id(hz).state;

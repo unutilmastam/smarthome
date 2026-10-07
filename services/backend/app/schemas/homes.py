@@ -35,6 +35,8 @@ class HomeIn(Model):
 
 class HomePatch(Model):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    tariff_per_kwh: Optional[float] = Field(default=None, ge=0, le=1_000_000)
+    currency: Optional[str] = Field(default=None, pattern=r"^[A-Z]{3}$")
     timezone: Optional[str] = None
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)

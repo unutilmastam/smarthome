@@ -12,6 +12,7 @@ EXPECTED = {
     "state-report.schema.json",
     "capabilities.schema.json",
     "local-mqtt.schema.json",
+    "telemetry-batch.schema.json",
 }
 
 UUID1 = "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f"
@@ -195,3 +196,13 @@ def test_local_mqtt_defs(validator_for):
     assert not v("ack").is_valid({"schema": 1, "command_id": UUID1, "status": "confirmed"})
     assert not v("cmd").is_valid({"schema": 1, "command_id": "x", "capability": "switch",
                                   "action": "turn_on", "params": {}})
+
+
+def test_telemetry_batch(validator_for):
+    v = validator_for("telemetry-batch.schema.json")
+    item = {"device_key": "main_meter", "metric": "power_meter.power", "ts": "2026-10-07T12:51:00Z",
+            "avg": 410.2, "min": 395.0, "max": 430.1, "last": 401.0, "count": 30}
+    v.validate({"schema": 1, "items": [item]})
+    assert not v.is_valid({"schema": 1, "items": [dict(item, ts="2026-10-07T12:51:13Z")]})
+    assert not v.is_valid({"schema": 1, "items": [dict(item, metric="power")]})
+    assert not v.is_valid({"schema": 1, "items": []})

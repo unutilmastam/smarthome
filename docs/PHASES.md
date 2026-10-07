@@ -195,11 +195,11 @@ Tugash mezoni: `[REAL]` testlar hisobotda.
 
 ## Faza 9 — Elektr monitoring
 
-- [ ] Telemetriya jadvallari: `telemetry_1m` (30 kun), `telemetry_1h` (2 yil), `energy_daily`; Hub agregatsiya qiladi va paket yuboradi.
-- [ ] Adapterlar: PZEM-004T (ESPHome), SDM120/SDM630 (Modbus RTU).
-- [ ] Kontaktor: `commanded_closed` va `aux_contact_closed` alohida; tasdiq faqat yordamchi kontakt bilan. Avtomat (breaker) holati dasturda **ko'rsatilmaydi**, agar apparat bermasa.
-- [ ] Tarif sozlamasi, kunlik/oylik xarajat.
-- [ ] UI: elektr paneli (ARCHITECTURE asl talablar 5.5).
+- [x] Telemetriya jadvallari: `telemetry_1m` (30 kun), `telemetry_1h` (2 yil), `energy_daily`; Hub agregatsiya qiladi va paket yuboradi.
+- [x] Adapterlar (ESPHome YAML, ADR 0010): PZEM-004T (ESPHome), SDM120/SDM630 (Modbus RTU).
+- [x] Kontaktor: `commanded_closed` va `aux_contact_closed` alohida; tasdiq faqat yordamchi kontakt bilan. Avtomat (breaker) holati dasturda **ko'rsatilmaydi**, agar apparat bermasa.
+- [x] Tarif sozlamasi, kunlik/oylik xarajat.
+- [x] UI: elektr paneli (ARCHITECTURE asl talablar 5.5).
 
 Tugash mezoni: o'lchov haqiqiy hisoblagich bilan solishtirilgan `[REAL]`.
 

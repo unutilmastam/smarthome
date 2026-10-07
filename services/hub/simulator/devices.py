@@ -418,8 +418,45 @@ class ValveSim(SimDevice):
         super().stop(graceful)
 
 
+class ContactorSim(SimDevice):
+    """DIN contactor on a circuit (ARCHITECTURE 10). The coil command and the auxiliary
+    contact are separate: only the aux contact proves the line really switched.
+    Faults: "welded" (contacts stuck closed), "aux_broken" (aux never changes)."""
+    capabilities = ("contactor",)
+
+    def __init__(self, key, switch_time_s: float = 0.1, closed: bool = True, **kw):
+        super().__init__(key, **kw)
+        self.switch_time = switch_time_s
+        self.initial = closed
+
+    def on_online(self):
+        with self.lock:
+            st = self.state.get("contactor", {"commanded_closed": self.initial,
+                                              "aux_contact_closed": self.initial})
+        self.set_and_publish("contactor", dict(st))
+
+    def _drive(self, cid, closed: bool):
+        self.ack(cid)
+        self.set_and_publish("contactor", {"commanded_closed": closed})
+
+        def settle():
+            if self.fault == "aux_broken":
+                return  # aux contact never changes
+            # Welded main contacts: the line stays closed whatever the coil does.
+            self.set_and_publish("contactor", {"aux_contact_closed": True if self.fault == "welded" else closed})
+        t = threading.Timer(self.switch_time, settle)
+        t.daemon = True
+        t.start()
+
+    def do_contactor_close(self, cid, p):
+        self._drive(cid, True)
+
+    def do_contactor_open(self, cid, p):
+        self._drive(cid, False)
+
+
 TYPES = {
     "light": LightSim, "power_meter": PowerMeterSim, "environment": EnvironmentSim,
     "motion": MotionSim, "leak": LeakSim, "gate": GateSim, "ir_climate": IRClimateSim,
-    "valve": ValveSim,
+    "valve": ValveSim, "contactor": ContactorSim,
 }

@@ -13,6 +13,7 @@ from sqlalchemy import delete, or_
 from app.db.types import utcnow
 from app.jobs._runner import job
 from app.models import AuthSession
+from app.services import telemetry
 from app.services.rate_limit import purge_old
 
 
@@ -21,7 +22,7 @@ def run(db) -> dict:
     sessions = db.execute(delete(AuthSession).where(or_(
         AuthSession.revoked_at < cutoff, AuthSession.expires_at < cutoff))).rowcount or 0
     db.commit()
-    return {"rate_limits": purge_old(db), "auth_sessions": sessions}
+    return {"rate_limits": purge_old(db), "auth_sessions": sessions, **telemetry.purge(db)}
 
 
 if __name__ == "__main__":

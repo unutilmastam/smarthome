@@ -4,6 +4,7 @@ from app.models.command import Command, CommandEvent
 from app.models.device import Camera, Device, DeviceCapability, DeviceState
 from app.models.home import Floor, Home, HomeMember, Room
 from app.models.hub import Hub
+from app.models.telemetry import EnergyDaily, Telemetry1h, Telemetry1m
 from app.models.user import User
 
 __all__ = [
@@ -21,5 +22,8 @@ __all__ = [
     "HomeMember",
     "Room",
     "Hub",
+    "EnergyDaily",
+    "Telemetry1h",
+    "Telemetry1m",
     "User",
 ]

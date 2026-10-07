@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { DeviceDetail } from "./pages/DeviceDetail";
 import { Devices } from "./pages/Devices";
+import { Energy } from "./pages/Energy";
 import { HubStatus } from "./pages/HubStatus";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
@@ -26,6 +27,7 @@ export function App() {
           <Route path="rooms" element={<Rooms />} />
           <Route path="devices" element={<Devices />} />
           <Route path="devices/:id" element={<DeviceDetail />} />
+          <Route path="energy" element={<Energy />} />
           <Route path="hub" element={<HubStatus />} />
           <Route path="settings" element={<Settings />} />
           <Route path="members" element={<Members />} />

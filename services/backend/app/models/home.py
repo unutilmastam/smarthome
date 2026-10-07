@@ -17,6 +17,10 @@ class Home(UUIDPk, Timestamps, Base):
     # Unknown until the owner sets them (needed for sunrise/sunset automations).
     latitude: Mapped[Optional[float]] = mapped_column(Float)
     longitude: Mapped[Optional[float]] = mapped_column(Float)
+    # Electricity price per kWh. Unknown until the owner sets it: costs stay null.
+    tariff_per_kwh: Mapped[Optional[float]] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3), default="UZS", server_default="UZS",
+                                          nullable=False)
 
 
 class HomeMember(Timestamps, Base):

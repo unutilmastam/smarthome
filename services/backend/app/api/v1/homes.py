@@ -26,6 +26,7 @@ router = APIRouter(tags=["homes"])
 def home_out(h: Home, role: str) -> dict:
     return {"id": str(h.id), "name": h.name, "timezone": h.timezone,
             "latitude": h.latitude, "longitude": h.longitude, "my_role": role,
+            "tariff_per_kwh": h.tariff_per_kwh, "currency": h.currency,
             "created_at": iso(h.created_at)}
 
 
@@ -84,6 +85,8 @@ def patch_home(home_id: uuid.UUID, body: HomePatch, request: Request,
     changes = body.model_dump(exclude_unset=True)
     if "name" in changes and changes["name"] is None:
         raise validation_error("name cannot be null")
+    if "currency" in changes and changes["currency"] is None:
+        raise validation_error("currency cannot be null")
     if "timezone" in changes and changes["timezone"] is None:
         raise validation_error("timezone cannot be null")
     lat = changes.get("latitude", home.latitude)

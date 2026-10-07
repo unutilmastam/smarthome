@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Command, Device, Home, Hub, Member, Room, SessionInfo } from "./types";
+import type { Command, Device, EnergySummary, Home, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
 
 /** Device state refresh when realtime is not available (ARCHITECTURE 2.A: 3 s). */
 export const POLL_MS = 3000;
@@ -45,3 +45,11 @@ export const useDeviceCommands = (device?: string) =>
   useQuery({ queryKey: qk.commands(device ?? ""), enabled: !!device, queryFn: () => api.get<Command[]>(`/devices/${device}/commands?limit=50`), refetchInterval: POLL_MS });
 
 export const useSessions = () => useQuery({ queryKey: qk.sessions, queryFn: () => api.get<SessionInfo[]>("/auth/sessions") });
+
+export const useEnergy = (home?: string, period: "day" | "month" = "day") =>
+  useQuery({ queryKey: ["energy", home ?? "", period], enabled: !!home, refetchInterval: 60_000,
+    queryFn: () => api.get<EnergySummary>(`/homes/${home}/energy/summary?period=${period}`) });
+
+export const useTelemetry = (device?: string, metric = "power_meter.power", hours = 6) =>
+  useQuery({ queryKey: ["telemetry", device ?? "", metric, hours], enabled: !!device, refetchInterval: 60_000,
+    queryFn: () => api.get<TelemetryPoint[]>(`/devices/${device}/telemetry?metric=${metric}&resolution=1m&hours=${hours}`) });

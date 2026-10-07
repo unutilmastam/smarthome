@@ -8,6 +8,7 @@ Backend, Hub va PWA shu fayllardan foydalanadi. O'zgartirish faqat shu yerda.
 | `roles.json` | Rol → ruxsat matritsasi (ARCHITECTURE 9). Backend va Hub ikkalasi ham tekshiradi |
 | `test-vectors/signing.json` | Buyruq imzosi test vektorlari (Backend va Hub) |
 | `schemas/local-mqtt.schema.json` | Lokal MQTT xabarlari Hub ↔ qurilma (ARCHITECTURE 5) |
+| `schemas/telemetry-batch.schema.json` | 1 daqiqalik telemetriya agregatlari Hub → Backend |
 | `schemas/capabilities.schema.json` | `capabilities.json` formati |
 | `schemas/value.schema.json` | Qiymat + ishonch (`source`, `quality`, `ts`) — ARCHITECTURE 4.2 |
 | `schemas/command-envelope.schema.json` | Imzolangan buyruq Backend → Hub — ARCHITECTURE 4.4, ADR 0004, 0007 |

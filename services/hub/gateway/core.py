@@ -17,6 +17,7 @@ from gateway.config import GatewaySettings
 from gateway.contracts import Contracts
 from gateway.expectations import expectation
 from gateway.store import Store
+from gateway.telemetry import RAW_RETENTION, Aggregator
 from gateway.timeutil import iso, parse_ts, utcnow
 from gateway.verifier import verify_envelope
 
@@ -56,6 +57,7 @@ class Gateway:
         self.cloud: Optional[aiomqtt.Client] = None
         self.cloud_connected = asyncio.Event()
         self.cloud_dirty: Set[str] = set()
+        self.aggregator = Aggregator(self.store)
         self._tasks: list = []
         self._stop = asyncio.Event()
 
@@ -310,6 +312,9 @@ class Gateway:
                     log.warning("dropping invalid value %s.%s.%s=%r", key, cap, attr, value)
                     continue
                 self.store.put_state(key, cap, attr, value, source, iso(ts))
+                if isinstance(value, (int, float)) and not isinstance(value, bool) \
+                        and source == "reported":
+                    self.aggregator.add(key, f"{cap}.{attr}", value, ts)
                 self.dirty.setdefault(key, set()).add((cap, attr))
                 accepted.setdefault(cap, {})[attr] = value
         if accepted:
@@ -366,7 +371,8 @@ class Gateway:
     async def flush_once(self) -> bool:
         """Send buffered acks then reports, oldest first. False if the backend is unreachable."""
         self.queue_dirty()
-        for kind in ("ack", "report"):
+        self.queue_telemetry()
+        for kind in ("ack", "report", "telemetry"):
             while True:
                 items = self.store.peek(kind, 100 if kind == "ack" else 1)
                 if not items:
@@ -374,8 +380,10 @@ class Gateway:
                 try:
                     if kind == "ack":
                         await self.backend.acks([p for _, p in items])
-                    else:
+                    elif kind == "report":
                         await self.backend.report(items[0][1])
+                    else:
+                        await self.backend.telemetry(items[0][1])
                 except BackendError as exc:
                     if exc.permanent:
                         log.error("dropping %s rejected by backend: %s", kind, exc)
@@ -385,6 +393,12 @@ class Gateway:
                     return False
                 self.store.ack_outbox([i for i, _ in items])
         return True
+
+    def queue_telemetry(self, now=None) -> None:
+        items = [i for i in self.aggregator.close_minutes(now)
+                 if not self.devices or i["device_key"] in self.devices]
+        for start in range(0, len(items), 2000):
+            self.store.enqueue("telemetry", {"schema": 1, "items": items[start:start + 2000]})
 
     async def _flush_loop(self) -> None:
         while True:
@@ -402,6 +416,7 @@ class Gateway:
                     if report["devices"]:
                         self.store.enqueue("report", report)
             self.store.purge_executed(self.s.executed_retention_days)
+            self.store.purge_raw(RAW_RETENTION)
 
     # ---- managed cloud broker (ADR 0008): fast path, never required ----------------------
     async def _cloud_loop(self) -> None:

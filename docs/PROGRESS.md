@@ -14,7 +14,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 6 | PWA (veb + telefon + iPad) | tugadi `[SIM]` (haqiqiy telefon/iPad'da emas, emulyatsiyada) |
 | 7 | cPanel'ga deploy | qisman: hamma narsa tayyor va lokal sinaldi; **haqiqiy hostingga deploy qilinmagan** (SSH kaliti va GitHub Secrets egasida) |
 | 8 | Birinchi real qurilma (ESP32 rele) | qisman: proshivka, o'rnatish yo'riqnomasi va UI tayyor; **apparatda sinalmagan** (`[REAL]` jadval bo'sh) |
-| 9 | Elektr monitoring | boshlanmagan |
+| 9 | Elektr monitoring | qisman: `[SIM]` tugadi; haqiqiy hisoblagich bilan solishtirilmagan (`[REAL]` yo'q) |
+| 10 | Kameralar | boshlanmagan |
 
 ---
 
@@ -524,3 +525,55 @@ Hal qilinmagan xavflar:
 - `on` holati — firmware boshqarayotgan rele chiqishi, chiroq haqiqatan yonganining isboti emas. Kuchliroq tasdiq uchun tok sensori (ARCHITECTURE 10) — ixtiyoriy.
 
 Keyingi faza: 9 — Elektr monitoring.
+
+---
+
+## Faza 9 — Elektr monitoring — 2026-10-07
+Holat: **qisman**. Kod va `[SIM]` testlar tugadi. Tugash mezoni ("o'lchov haqiqiy hisoblagich bilan solishtirilgan `[REAL]`") **bajarilmagan** — apparat yo'q (H-04, H-08).
+
+Qilingan ishlar:
+- Jadvallar va migratsiya `0003`:
+  - `telemetry_1m` (30 kun) va `telemetry_1h` (2 yil): `avg/min/max/last/count`;
+  - `energy_daily` (doimiy): kVt·soat va narx;
+  - `homes.tariff_per_kwh` (standart holatda **yo'q**) va `currency` (UZS).
+- Hub: har bir daqiqa uchun agregatsiya qiladi. Xom o'lchovlar Hub SQLite'da 7 kun saqlanadi. Agregatlar outbox orqali `POST /hub/telemetry:batch` ga yuboriladi, ya'ni internet uzilsa buferda kutib turadi. Faqat `reported` sonli qiymatlar hisoblanadi (`assumed` emas).
+- Backend qabul qilishda tekshiradi: qurilma, metrika, sonli tur, `not_supported`, kelajak vaqti, `min ≤ avg ≤ max`, contracts chegaralari. Shu bucket qayta yuborilsa eskisi almashtiriladi (idempotent).
+- `contracts/schemas/telemetry-batch.schema.json` (ts — daqiqa boshi, UTC).
+- Hisob-kitob (`python -m app.jobs.energy`, soatlik cron):
+  - 1m → 1h roll-up; oxirgi 3 soat qayta hisoblanadi, shunda kech kelgan ma'lumot ham o'z joyiga tushadi;
+  - kunlik kVt·soat **uyning lokal kuni** bo'yicha (`Asia/Tashkent`), hisoblagich nolga qaytsa ham to'g'ri (`counter_delta`);
+  - ma'lumot yo'q kun yozilmaydi, ya'ni "0" emas;
+  - tarif kiritilmagan bo'lsa narx `null` qoladi.
+- API:
+  - `GET /homes/{id}/energy/summary?period=day|month`: jami va qurilmalar bo'yicha; ma'lumot yo'q bo'lsa `null`;
+  - `GET /devices/{id}/telemetry?metric=&resolution=1m|1h&hours=`;
+  - `PATCH /homes/{id}`: `tariff_per_kwh`, `currency`.
+- Retention: 1m > 30 kun va 1h > 2 yil o'chiriladi.
+- ESPHome:
+  - `pzem-meter.yaml` (PZEM-004T v3, UART/Modbus);
+  - `sdm-meter.yaml` (SDM120, RS485/Modbus);
+  - `contactor.yaml` — bobina = `commanded_closed`, yordamchi kontakt = `aux_contact_closed`; tasdiq faqat yordamchi kontakt bo'yicha. O'lchov hali bo'lmasa (NaN) hech narsa yuborilmaydi.
+- Simulyator: `ContactorSim`, nosozliklar `welded` (kontaktlar yopishib qolgan) va `aux_broken`.
+- PWA "Elektr" sahifasi:
+  - bugun va shu oy uchun kVt·soat va narx (ma'lumot yoki tarif bo'lmasa "Ma'lumot yo'q" / "Tarif kiritilmagan", hech qachon 0 emas);
+  - har bir hisoblagich qiymati ishonch belgisi bilan;
+  - oxirgi 6 soatlik quvvat grafigi (bo'shliqlar to'ldirilmaydi);
+  - tarif sozlamasi;
+  - eslatma: "avtomat (breaker) holati ko'rsatilmaydi".
+
+Testlar:
+- backend → 258 passed (SQLite + PostgreSQL). Shu jumladan: ingest rad etishlari (6 holat), idempotentlik, hisoblagich nolga qaytishi, lokal kun chegarasi, tarifsiz `null`, roll-up, purge, API.
+- hub → 33 passed [SIM]:
+  - PZEM simulyatori → gateway → backend `telemetry_1m`; `not_supported` chastota yuborilmaydi; xom o'lchovlar Hub'da qoladi;
+  - kontaktor faqat yordamchi kontakt bilan `confirmed`; kontaktlar yopishib qolsa → `no_feedback` va haqiqiy holat (`aux=true`) ko'rinadi.
+- web → `tsc` OK, vitest 27 passed, Playwright 4 passed [SIM].
+- contracts → 59 passed.
+- `esphome config`: pzem, sdm, contactor, light → hammasi valid. `esphome compile` CI'ning `firmware` job'ida bo'ladi (lokal tarmoq PlatformIO'ni bloklaydi).
+
+Hal qilinmagan xavflar:
+- O'lchov aniqligi haqiqiy hisoblagich bilan solishtirilmagan. `[REAL]` jadval Faza 15 da.
+- Tarif bir xil narxda. O'zbekistonda pog'onali (ijtimoiy norma) tarif bo'lsa, model kengaytiriladi (H-04 bilan birga aniqlanadi).
+- SDM630 (3 faza) uchun fazalar bo'yicha shartnoma hali yo'q (H-04a).
+- Soatlik cron hostingda hali sozlanmagan (Faza 7 deploy'dan keyin).
+
+Keyingi faza: 10 — Kameralar (lokal).

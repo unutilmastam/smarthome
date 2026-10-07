@@ -1,0 +1,84 @@
+# ESP32 + relay driving a DIN contactor coil + auxiliary contact input (ARCHITECTURE 10).
+# commanded_closed = what the firmware drives; aux_contact_closed = the ONLY proof that
+# the line switched (confirm_attribute). A breaker's state is NOT shown (unknown to us).
+# Contactor, coil relay and aux wiring: qualified electrician only (H-08).
+substitutions:
+  device_key: line_boiler
+  friendly_name: "Boyler liniyasi"
+  coil_pin: GPIO26
+  aux_pin: GPIO27
+  # Power returns -> line state per circuit: ALWAYS_ON keeps fridge/freezer lines powered.
+  restore: ALWAYS_ON
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+switch:
+  - platform: gpio
+    id: coil
+    name: coil
+    pin: ${coil_pin}
+    restore_mode: ${restore}
+    state_topic: null
+    command_topic: null
+    on_state:
+      - script.execute: publish_state
+
+binary_sensor:
+  - platform: gpio
+    id: aux
+    name: aux
+    pin:
+      number: ${aux_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    state_topic: null
+    on_state:
+      - script.execute: publish_state
+
+script:
+  - id: publish_state
+    mode: queued
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            JsonObject c = root["states"]["contactor"].to<JsonObject>();
+            c["commanded_closed"] = id(coil).state;
+            if (id(aux).has_state()) c["aux_contact_closed"] = id(aux).state;
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "contactor") { ack("rejected", "invalid_params"); return; }
+            if (act == "close") { ack("acked", nullptr); id(coil).turn_on(); }
+            else if (act == "open") { ack("acked", nullptr); id(coil).turn_off(); }
+            else { ack("rejected", "invalid_params"); }

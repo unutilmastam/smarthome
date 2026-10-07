@@ -41,7 +41,17 @@ export interface Home {
   latitude: number | null;
   longitude: number | null;
   my_role: Role;
+  tariff_per_kwh: number | null;
+  currency: string;
 }
+
+export interface EnergyDevice { device_id: string; key: string; name: string; kwh: number; cost: number | null; currency: string | null; days_with_data: number }
+export interface EnergySummary {
+  period: "day" | "month"; from: string; to: string; timezone: string;
+  tariff_per_kwh: number | null; currency: string; total_kwh: number | null; total_cost: number | null;
+  devices: EnergyDevice[];
+}
+export interface TelemetryPoint { ts: string; avg: number; min: number; max: number; last: number }
 
 export interface Room { id: string; home_id: string; name: string; type: "indoor" | "outdoor"; floor_id: string | null }
 

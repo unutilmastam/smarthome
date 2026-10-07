@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS device_state (
     ts TEXT NOT NULL,
     PRIMARY KEY (device_key, capability, attribute)
 );
+CREATE TABLE IF NOT EXISTS raw_telemetry (
+    device_key TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    value REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_raw_ts ON raw_telemetry (ts);
 CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
@@ -145,3 +152,14 @@ class Store:
         with self._lock:
             row = self.db.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    # ---- raw telemetry (7 days on the hub only) ---------------------------------------
+    def add_raw(self, key: str, metric: str, ts, value: float) -> None:
+        with self._lock:
+            self.db.execute("INSERT INTO raw_telemetry VALUES (?,?,?,?)",
+                            (key, metric, iso(ts), value))
+
+    def purge_raw(self, older_than: timedelta) -> int:
+        with self._lock:
+            return self.db.execute("DELETE FROM raw_telemetry WHERE ts < ?",
+                                   (iso(utcnow() - older_than),)).rowcount

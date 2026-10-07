@@ -22,6 +22,7 @@ from app.schemas.common import Model
 from app.services.commands import apply_ack, claim_for_hub, expire_due
 from app.services.device_view import iso
 from app.services.hub_reports import apply_report
+from app.services.telemetry import ingest as ingest_telemetry
 
 router = APIRouter(prefix="/hub", tags=["hub"])
 
@@ -118,3 +119,10 @@ def get_config(hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
     })
 
 
+
+
+@router.post("/telemetry:batch")
+def post_telemetry(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                   db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
+    _validate(contracts, "telemetry-batch.schema.json", body)
+    return ok(ingest_telemetry(db, hub, contracts, body))

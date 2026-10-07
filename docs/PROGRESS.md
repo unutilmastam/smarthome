@@ -12,7 +12,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 4 | Home Hub + simulyator | tugadi `[SIM]`, CI yashil (Docker image build sinalmagan) |
 | 5 | Real-time (managed MQTT) | qisman: `[SIM]` tugadi, haqiqiy EMQX hisobida sinalmagan |
 | 6 | PWA (veb + telefon + iPad) | tugadi `[SIM]` (haqiqiy telefon/iPad'da emas, emulyatsiyada) |
-| 7 | cPanel'ga deploy | boshlanmagan |
+| 7 | cPanel'ga deploy | qisman: hamma narsa tayyor va lokal sinaldi; **haqiqiy hostingga deploy qilinmagan** (SSH kaliti va GitHub Secrets egasida) |
+| 8 | Birinchi real qurilma | boshlanmagan |
 
 ---
 
@@ -426,4 +427,58 @@ Hal qilinmagan xavflar:
 - Lokal rejim (`hub.local`) faqat aniqlash darajasida. Hub'da `local-api` yo'q, shuning uchun internetsiz telefondan boshqarish **hali ishlamaydi**.
 - Web Push va bildirishnomalar — Faza 13.
 
+CI: run #6 (commit `feff73c`) → **failure** (`web` job: e2e stack ko'tarilmadi — CI'da `uvicorn` o'rnatilmagan edi; lokal venv'da bor edi). Tuzatish commit `7bf12c6` da: `requirements-dev.txt` o'rnatiladi, `stack.py` xatoda tez to'xtaydi va bola jarayonlarni o'chiradi. Xato CI'ga o'xshash toza venv'da qayta hosil qilindi, tuzatishdan keyin 4/4 o'tdi.
+
 Keyingi faza: 7 — cPanel'ga deploy (hostmaster.uz).
+
+---
+
+## Faza 7 — cPanel'ga deploy (hostmaster.uz) — 2026-10-07
+Holat: **qisman**. Deploy uchun kerakli hamma narsa yozildi va lokal sinaldi. **Haqiqiy hostingga deploy bajarilmadi**: buning uchun cPanel SSH kaliti, GitHub Secrets va subdomen kerak; ular egasida (runbook'da qadamma-qadam yozilgan). Tugash mezoni (`https://<domen>/api/v1/health` → ok; telefondan simulyatorni boshqarish) hali **bajarilmagan**.
+
+Qilingan ishlar:
+- `passenger_wsgi.py`: cPanel Python App `Application URL = /api` ga o'rnatiladi. Passenger `SCRIPT_NAME=/api` qilib prefiksni olib tashlaydi; uni FastAPI'ga qaytarib beradigan WSGI o'rami qo'shildi. Ilova domen ildiziga o'rnatilganda ham ishlaydi (ikkalasi test bilan tekshirilgan).
+- Production'da OpenAPI va Swagger **o'chiq** (`DOCS_ENABLED` bilan ochish mumkin).
+- Cron job'lar:
+  - `python -m app.jobs.expire_due` (har daqiqa);
+  - `python -m app.jobs.retention` (kunlik: rate limit hisoblagichlari, 30 kundan eski sessiyalar; audit va buyruqlar tarixi saqlanadi);
+  - `backup.sh` (kunlik `pg_dump` → `~/backups`, 14 kun, ruxsat 600, parollar faqat `~/.pgpass` da).
+- `infra/cpanel/build_release.sh`: release yig'adi.
+  - `api/`: faqat runtime fayllar va `contracts/` nusxasi.
+  - `web/`: PWA va `.htaccess`.
+  - Release ichida `.env`, kalit yoki parol fayli bo'lsa **to'xtaydi**.
+- `infra/cpanel/web.htaccess`:
+  - HTTPS'ga yo'naltirish, SPA fallback (`/api` ga tegmaydi);
+  - HSTS, CSP (`connect-src` faqat o'z domeni + EMQX WSS), `nosniff`, `frame-ancestors 'none'`;
+  - `sw.js` va `index.html` keshlanmaydi, hash'li fayllar `immutable`.
+- `.github/workflows/deploy-cloud.yml`:
+  - `main` da `test` yashil bo'lsa yoki qo'lda ishga tushiriladi;
+  - faqat `DEPLOY_ENABLED=true` bo'lganda ishlaydi;
+  - qadamlar: PWA build → release → rsync (SSH, `StrictHostKeyChecking=yes`, `.env` ga tegmaydi) → `pip install` → `alembic upgrade head` → `tmp/restart.txt` → health check;
+  - sirlar faqat GitHub Secrets'da.
+- `docs/runbooks/deploy.md`: iPad'dan bajariladigan qadamlar — 2FA, subdomen + AutoSSL, PostgreSQL, Setup Python App, `.env`, SSH kalit va Secrets, birinchi deploy, `create-owner`, cron, Hub'ni ulash, muammolarni hal qilish.
+- PWA'ga **Hub qo'shish va bekor qilish** qo'shildi (owner yoki admin): token va kalit bir marta ko'rsatiladi, "Nusxalash" tugmasi bor. Bu bo'lmasa egasi kompyutersiz Hub yarata olmasdi.
+
+cPanel'ni imitatsiya qilib sinash (lokal, `[SIM]`):
+- `build_release.sh` → release yig'ildi; ichida sir yo'q.
+- Toza Python 3.10 venv + **faqat** release'dagi `requirements.txt` + `ENV=production` + toza PostgreSQL 16:
+  - `alembic upgrade head` → OK;
+  - Passenger orqali (`SCRIPT_NAME=/api`) `GET /v1/health` → `200 {"status":"ok"}`;
+  - `contracts` release ichidan topildi; docs o'chiq;
+  - `create-owner` → OK;
+  - `expire_due` va `retention` job'lari → OK.
+- `backup.sh` → `pg_dump` OK (16 jadval). Dump'dan **yangi bazaga tiklash** sinaldi: foydalanuvchi va uy qaytdi.
+- `index.html` da inline skript yo'q, ya'ni CSP `script-src 'self'` bilan mos.
+
+Testlar:
+- `cd services/backend && pytest` → 237 passed (SQLite + PostgreSQL): Passenger prefiksi, production'da docs o'chiqligi, `expire_due` va `retention` job'lari.
+- `apps/web`: `tsc` OK, `vitest` → 23 passed (Hub yaratish: sirlar bir marta ko'rsatiladi; family Hub qo'sha olmaydi).
+- `deploy-cloud.yml` **ishga tushirilmagan** (Secrets yo'q).
+
+Hal qilinmagan xavflar / egasi bajarishi kerak:
+- Runbook bo'yicha hosting sozlamalari. Avval aniqlanishi kerak: H-01b (Python versiyasi), H-01c (PostgreSQL versiyasi), H-01e (cron oralig'i, 2FA).
+- `.htaccess` dagi `Header` va `RewriteRule` lar hostmaster.uz Apache/LiteSpeed'da sinalmagan. Sarlavhalarni deploy'dan keyin tekshirish kerak (masalan, securityheaders.com).
+- Hosting `a2wsgi`/Passenger bilan ko'p jarayonli rejimda real yuklama ostida sinalmagan.
+- PWA'da qurilma va xona qo'shish UI'i hali yo'q — hozircha faqat API orqali. Bu Faza 8 dan oldin kerak bo'ladi.
+
+Keyingi faza: 8 — Birinchi real qurilma (ESP32 rele + chiroq).

@@ -66,11 +66,15 @@ class Settings(BaseSettings):
     realtime_credentials_ttl_s: int = 12 * 3600
     # ADR 0009: refresh token cookie for the PWA
     cookie_secure: bool = True
+    # OpenAPI/Swagger UI. Off in production unless explicitly enabled (ARCHITECTURE 8).
+    docs_enabled: Optional[bool] = None
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":
         if self.contracts_dir is None:
             self.contracts_dir = _default_contracts_dir()
+        if self.docs_enabled is None:
+            self.docs_enabled = self.env is not Environment.production
 
         if self.env is Environment.production:
             problems = []

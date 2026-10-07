@@ -172,11 +172,11 @@ Tugash mezoni: simulyator qurilmalari telefon va iPad'dan boshqariladi.
 **Maqsad:** tizim haqiqiy domenda ishlaydi.
 
 Vazifalar:
-- [ ] `infra/cpanel/`: deploy skripti, `.htaccess` (PWA SPA marshrutlari, `/api` → Python app), cron ro'yxati.
-- [ ] `.github/workflows/deploy-cloud.yml`: test → PWA build → SSH (GitHub Secrets) orqali yuklash → `pip install` (virtualenv) → `alembic upgrade head` → `tmp/restart.txt`.
-- [ ] Cron: `expire_due` (har daqiqa), retention (kunlik), `pg_dump` zaxira (kunlik).
-- [ ] `docs/runbooks/deploy.md`: iPad'dan qadamlar (cPanel → Setup Python App, PostgreSQL DB yaratish, SSL, birinchi owner).
-- [ ] Hub (yoki simulyator) haqiqiy domen'ga ulanadi.
+- [x] `infra/cpanel/`: deploy skripti, `.htaccess` (PWA SPA marshrutlari, `/api` → Python app), cron ro'yxati.
+- [x] `.github/workflows/deploy-cloud.yml` (yozildi; Secrets yo'qligi sababli ishga tushirilmagan): test → PWA build → SSH (GitHub Secrets) orqali yuklash → `pip install` (virtualenv) → `alembic upgrade head` → `tmp/restart.txt`.
+- [x] Cron: `expire_due` (har daqiqa), retention (kunlik), `pg_dump` zaxira (kunlik).
+- [x] `docs/runbooks/deploy.md`: iPad'dan qadamlar (cPanel → Setup Python App, PostgreSQL DB yaratish, SSL, birinchi owner).
+- [ ] Hub (yoki simulyator) haqiqiy domen'ga ulanadi. — **egasi deploy qilgandan keyin**
 
 Tugash mezoni: `https://<domen>/api/v1/health` → ok; telefondan simulyator boshqariladi.
 

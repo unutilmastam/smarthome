@@ -1,3 +1,5 @@
 # Runbook'lar
 
-Nosozlik va texnik xizmat ko'rsatma(lar)i. Faza 7 va 14 da to'ldiriladi.
+Nosozlik va texnik xizmat ko'rsatmalari.
+
+- [deploy.md](deploy.md) — hostmaster.uz cPanel'ga deploy (iPad'dan)

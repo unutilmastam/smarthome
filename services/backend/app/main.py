@@ -18,8 +18,8 @@ def create_app(settings: Optional[Settings] = None,
     app = FastAPI(
         title="SmartHome Control Center API",
         version=settings.app_version,
-        openapi_url=f"{API_PREFIX}/openapi.json",
-        docs_url=f"{API_PREFIX}/docs",
+        openapi_url=f"{API_PREFIX}/openapi.json" if settings.docs_enabled else None,
+        docs_url=f"{API_PREFIX}/docs" if settings.docs_enabled else None,
         redoc_url=None,
     )
     app.state.settings = settings

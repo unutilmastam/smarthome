@@ -121,9 +121,9 @@
 
 | Qatlam | Tanlov |
 |---|---|
-| Backend (cloud) | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, a2wsgi |
+| Backend (cloud) | Python 3.10+ (3.10 bilan mos; hosting versiyasi tasdiqlanguncha), FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, a2wsgi |
 | DB (cloud) | PostgreSQL (cPanel) |
-| Gateway / automation (hub) | Python 3.11+, asyncio, aiomqtt, Pydantic, SQLite |
+| Gateway / automation (hub) | Python 3.10+, asyncio, aiomqtt, Pydantic, SQLite |
 | Frontend | React 18 + TypeScript + Vite, TanStack Query, Zustand, i18next (uz → ru, en), PWA (vite-plugin-pwa) |
 | Real-time (frontend) | mqtt.js (WSS), fallback — polling |
 | Video | Frigate + go2rtc (WebRTC), Tailscale |
@@ -153,6 +153,7 @@ environment   : temperature, humidity, soil_moisture
 leak          : wet/dry
 valve         : open/closed + max_runtime  (sug'orish)
 camera        : stream_available, recording, disk_usage
+contactor     : commanded_closed, aux_contact_closed  (liniya o'chirish; tasdiq — yordamchi kontakt)
 ```
 
 Yangi qurilma qo'shish = adapter + mavjud capability'lardan foydalanish. UI capability'ga qarab avtomatik boshqaruv elementini chizadi.
@@ -288,7 +289,7 @@ hub (Hub uchun, hub token bilan):
                GET  /hub/config      (qurilmalar, avtomatikalar — sinxron)
 ```
 - Javob formati: `{ "data": ..., "error": null, "meta": {...} }`.
-- Xato kodlari: `AUTH_REQUIRED, FORBIDDEN, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR`.
+- Xato kodlari: `AUTH_REQUIRED, FORBIDDEN, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE`.
 - OpenAPI `/api/v1/docs` (productionda faqat admin).
 
 ---
@@ -375,7 +376,7 @@ max_runs_per_hour: 20
 | Svet o'chdi, qaytdi | Har bir rele `restore_mode` bo'yicha (standart: OFF; chiroqlar sozlanadi). Nasos — har doim OFF |
 | ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin) |
 | Lokal broker yiqildi | Docker `restart: always`, Hub salomatligi `degraded` |
-| Cloud broker yo'q | Backend buyruqni `failed: hub_unreachable` qiladi, PWA aniq xabar ko'rsatadi |
+| Cloud broker yo'q | Buyruqlar HTTPS polling orqali davom etadi (ADR 0005). Hub ham yetib bo'lmasa (`last_seen` eskirgan) — `503 HUB_UNREACHABLE`, buyruq yaratilmaydi, PWA aniq xabar ko'rsatadi |
 | HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ogohlantirish |
 | Hub o'zi o'chdi | Cloud `hubs.last_seen` > 3 daq → kritik bildirishnoma (Telegram) |
 
@@ -387,7 +388,7 @@ max_runs_per_hour: 20
 - Parollar: Argon2id. Access token 15 daq, refresh token 30 kun (rotatsiya, bekor qilish mumkin, `HttpOnly` cookie).
 - Login: rate limit (IP + akkaunt), 5 xatodan keyin kechikish.
 - Sirlar: `.env` (gitda yo'q), GitHub Actions Secrets. Repo'da faqat `.env.example`.
-- Hub sirlari: `home_secret` faqat Hub va Backend'da.
+- Hub sirlari: `hub_token` (DB'da faqat SHA-256) va `signing_key_hex` (DB'da saqlanmaydi, master kalitdan hosil qilinadi — 4.4) faqat Hub `.env` ida.
 - Kameralar alohida VLAN'da, internetga chiqishi bloklangan, RTSP portlari tashqariga ochilmagan.
 - Router'da port forwarding **yo'q**. Masofaviy kirish faqat Tailscale.
 - ESPHome: API shifrlash kaliti + OTA paroli har qurilmada alohida.

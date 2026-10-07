@@ -43,10 +43,10 @@ Keyingi faza: N+1 — <nomi>
 **Maqsad:** qarorlar yozilgan, savollar ro'yxati aniq.
 
 Vazifalar:
-- [ ] `docs/decisions/` ga ADR'lar: 0001 shared hosting + Hub arxitekturasi, 0002 PostgreSQL, 0003 bitta PWA (React Native emas), 0004 buyruq imzosi (HMAC, hosil qilingan kalit), 0005 polling birinchi, MQTT keyin, 0006 video uydan chiqmaydi.
-- [ ] `docs/threat-model.md`: aktivlar (darvoza, qulf, kamera, elektr), tahdidlar (token o'g'irlash, broker paroli, DB sizishi, replay, LAN'dagi begona qurilma), har biriga himoya.
-- [ ] `docs/hardware/inventory.md`: ARCHITECTURE.md 18-bo'limdagi savollar jadvali (javob / "noma'lum").
-- [ ] `docs/PROGRESS.md` yaratiladi.
+- [x] `docs/decisions/` ga ADR'lar: 0001 shared hosting + Hub arxitekturasi, 0002 PostgreSQL, 0003 bitta PWA (React Native emas), 0004 buyruq imzosi (HMAC, hosil qilingan kalit), 0005 polling birinchi, MQTT keyin, 0006 video uydan chiqmaydi.
+- [x] `docs/threat-model.md`: aktivlar (darvoza, qulf, kamera, elektr), tahdidlar (token o'g'irlash, broker paroli, DB sizishi, replay, LAN'dagi begona qurilma), har biriga himoya.
+- [x] `docs/hardware/inventory.md`: ARCHITECTURE.md 18-bo'limdagi savollar jadvali (javob / "noma'lum").
+- [x] `docs/PROGRESS.md` yaratiladi.
 
 Tugash mezoni: hujjatlar bor, kod yo'q.
 

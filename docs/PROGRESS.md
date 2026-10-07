@@ -6,8 +6,9 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | Faza | Nomi | Holat |
 |---|---|---|
 | 0 | Tayyorgarlik (hujjatlar) | tugadi |
-| 1 | Poydevor (monorepo, contracts, CI) | tugadi (CI natijasi pastda) |
-| 2 | Backend asosi | boshlanmagan |
+| 1 | Poydevor (monorepo, contracts, CI) | tugadi, CI yashil |
+| 2 | Backend asosi (auth, uy, xona, qurilma reyestri) | tugadi |
+| 3 | Buyruqlar (imzo, hayot sikli, Hub API) | boshlanmagan |
 
 ---
 
@@ -86,7 +87,7 @@ Testlar (lokal, cloud konteynerda):
 - `cd services/backend && python3.10 -m pytest -q` → 13 passed [SIM]
 - Xuddi shu testlar Python 3.12 da → 52 passed, 13 passed [SIM]
 - Testlar: barcha sxemalar to'g'ri JSON Schema; har capability'da `permission`, `risk`, `attributes`, `actions`; to'g'ri/noto'g'ri namunalar; health (TestClient va Passenger WSGI orqali); production + dev sir/SQLite → xato.
-- GitHub Actions natijasi: push'dan keyin tekshiriladi (pastda).
+- GitHub Actions: `test` workflow, run #1 (commit `7039b22`) → **success** (Python 3.10 va 3.12).
 
 Hal qilinmagan xavflar:
 - PostgreSQL service CI'da ko'tariladi, lekin Faza 1 da DB'dan foydalanilmaydi (Faza 2 dan).
@@ -97,3 +98,66 @@ Tasdiqlanmagan taxminlar:
 - Hosting Python versiyasi ≥ 3.10 (H-01b).
 
 Keyingi faza: 2 — Backend asosi (auth, uy, xona, qurilma reyestri).
+
+---
+
+## Faza 2 — Backend asosi (auth, uy, xona, qurilma reyestri) — 2026-10-07
+Holat: tugadi
+
+Qilingan ishlar:
+- SQLAlchemy 2 modellari: `users, auth_sessions, homes, home_members, floors, rooms, hubs, devices, device_capabilities, device_state, cameras, audit_log` va qo'shimcha `rate_limits` jadvali. Bu jadval login rate limit'i uchun: hisoblagich DB'da turadi, shuning uchun bir nechta Passenger jarayoni orasida umumiy bo'ladi.
+- Alembic birinchi migratsiyasi `0001`. Toza PostgreSQL va SQLite'da `upgrade head` ishlaydi, model bilan farq yo'q (`compare_metadata` → bo'sh), `downgrade base` hammasini o'chiradi.
+- DB cheklovlari: uyda faqat bitta owner va faqat bitta aktiv Hub (partial unique index), rol/holat/sifat qiymatlari uchun CHECK constraint'lar.
+- `UTCDateTime` turi: naive datetime yozishga urinish xato beradi, o'qilganda doim UTC qaytadi (SQLite va Postgres'da bir xil).
+- Auth:
+  - Argon2id parol va PIN.
+  - Access JWT 15 daqiqa; har so'rovda sessiya DB'da tekshiriladi, shuning uchun logout darhol kuchga kiradi.
+  - Refresh token 30 kun, `<session_id>.<secret>` formatida; DB'da faqat SHA-256 saqlanadi. Har refresh'da rotatsiya bo'ladi; eski token qayta ishlatilsa foydalanuvchining **barcha** sessiyalari bekor qilinadi.
+  - Endpoint'lar: `login`, `refresh`, `logout`, `logout-all`, `me`, `password` (boshqa sessiyalar bekor bo'ladi), `pin`.
+- Login himoyasi:
+  - IP bo'yicha limit: 5 daqiqada 20 urinish.
+  - 5 ta xato urinishdan keyin akkaunt 5 daqiqaga bloklanadi.
+  - Email mavjud bo'lmasa ham parol dummy hash bilan tekshiriladi va javob bir xil chiqadi.
+- Ommaviy ro'yxatdan o'tish yo'q. Birinchi owner `python -m app.cli create-owner --email ... --name ... [--password-stdin]` bilan yaratiladi.
+- Rollar: `app/core/permissions.py` (ARCHITECTURE 9).
+  - Mehmon (guest) hozircha faqat ko'radi: alohida ruxsatlar (grants) qurilmagan.
+  - Oila a'zosi (family) uchun `camera_live` standart holatda **yopiq**. ARCHITECTURE da bu "sozlanadi" deyilgan, lekin sozlash hali yo'q.
+  - A'zolarni faqat owner qo'shadi. Ikkinchi owner yaratib bo'lmaydi, owner'ning rolini o'zgartirib yoki uni o'chirib bo'lmaydi.
+- A'zo bo'lmagan uyning resurslariga so'rov → 404 (22 ta endpoint test bilan tekshirildi).
+- CRUD: homes, members, floors, rooms, devices, hubs (+ `revoke`). Hub yaratilganda `hub_token` va `signing_key_hex` faqat bir marta qaytariladi; DB'da faqat token hash'i turadi, kalit esa saqlanmaydi (master kalitdan hosil qilinadi).
+- Qurilma yaratishda capability'lar, `unsupported` atributlar va config kalitlari contracts bo'yicha tekshiriladi.
+- Qurilma javobida har bir capability'ning har bir atributi chiqadi:
+  - ma'lumot yo'q → `unknown`;
+  - apparat o'lchamaydi → `not_supported`;
+  - Hub offline yoki qurilma offline yoki `stale_factor × report_interval_s` dan eski → `stale`;
+  - Hub yo'q yoki offline bo'lsa, qurilma holati (availability) `unknown`;
+  - `assumed` manbasi saqlanadi.
+- Javob formati `{data, error, meta}`, ro'yxatlarda `limit`/`offset`/`total`. Xato kodlari ARCHITECTURE 8 da kengaytirildi: `INVALID_CREDENTIALS`, `NOT_FOUND`, `CONFLICT`.
+- Audit: login (muvaffaqiyatli, xato, blok), sessiyalar, parol, PIN, uy, a'zolar, qavat, xona, qurilma, Hub. API faqat o'qish uchun (`GET /homes/{id}/audit`); POST/PATCH/DELETE → 405. Audit'ga sir yozilmasligi test bilan tekshirildi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `services/backend/app/`: `db/{types,base,session}.py`, `models/{user,auth,home,hub,device,audit}.py`, `core/{errors,security,contracts,permissions,signing}.py`, `services/{auth,audit,rate_limit,devices,device_view}.py`, `schemas/{common,auth,homes,devices}.py`, `api/deps.py`, `api/v1/{auth,homes,devices,hubs,router}.py`, `cli.py`, `main.py`, `core/config.py`
+- `services/backend/alembic.ini`, `migrations/{env.py,script.py.mako,versions/0001_initial_schema.py}`
+- `services/backend/tests/`: `conftest.py`, `test_auth.py`, `test_roles.py`, `test_isolation.py`, `test_devices.py`, `test_hubs.py`, `test_audit.py`, `test_cli_types.py`, `test_migrations.py`, `test_health.py`
+- `services/backend/requirements.txt` (SQLAlchemy, Alembic, psycopg, argon2-cffi, PyJWT, tzdata), `.env.example`
+- `ARCHITECTURE.md` (8-bo'lim: xato kodlari, 404 qoidasi)
+
+Testlar (lokal):
+- `cd services/backend && TEST_POSTGRES_URL=... python3.10 -m pytest -q` → 131 passed [SIM] (API testlari SQLite **va** PostgreSQL 16 da)
+- Xuddi shu Python 3.12 da → 131 passed [SIM]
+- `python -m pytest packages/contracts -q` → 52 passed [SIM]
+- `alembic upgrade head` / `alembic check` / `downgrade base` — toza PostgreSQL 16 va SQLite'da xatosiz.
+- OpenAPI: `/api/v1/docs` ochiladi (test).
+
+Hal qilinmagan xavflar:
+- Refresh token hozir JSON body'da qaytariladi. `HttpOnly` cookie bilan saqlash qarori Faza 6 ADR'ida qabul qilinadi.
+- Akkaunt bloklanganda `429` qaytadi. Bu orqali mavjud email'ni aniqlash mumkin, lekin buning uchun 5 ta noto'g'ri urinish kerak va har bir urinish IP limitiga ham hisoblanadi.
+- Agar hujumchi kimningdir sessiya ID'sini bilsa va soxta refresh token yuborsa, o'sha foydalanuvchining barcha sessiyalari bekor bo'ladi (logout qilinadi). Bu ataylab tanlangan konservativ xatti-harakat.
+- `password_resets` (ARCHITECTURE 7) amalga oshirilmagan — Faza 2 vazifalari ro'yxatida yo'q. Hozircha parolni owner CLI orqali yoki foydalanuvchi o'zi `/auth/password` bilan o'zgartiradi.
+- `rate_limits` jadvalini tozalash cron'i (`purge_old`) yozilgan, lekin cron'ga Faza 7 da ulanadi.
+- OpenAPI hujjati production'da ham ochiq. ARCHITECTURE "productionda faqat admin" deydi — bu Faza 7 da yopiladi.
+
+Tasdiqlanmagan taxminlar:
+- Hub online oynasi 90 s (heartbeat 30 s × 3). Faza 4 da haqiqiy Hub bilan tekshiriladi.
+
+Keyingi faza: 3 — Buyruqlar (imzo, hayot sikli, Hub API).

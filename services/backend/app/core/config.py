@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="")
     signing_master_key: str = Field(default="")
     contracts_dir: Optional[Path] = None
+    # Hub is considered online if its last heartbeat is newer than this.
+    hub_online_window_s: int = 90
+    # Values older than stale_factor x report_interval_s (if configured) are stale.
+    stale_factor: int = 3
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":

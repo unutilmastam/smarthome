@@ -290,7 +290,8 @@ hub (Hub uchun, hub token bilan):
                GET  /hub/config      (qurilmalar, avtomatikalar — sinxron)
 ```
 - Javob formati: `{ "data": ..., "error": null, "meta": {...} }`.
-- Xato kodlari: `AUTH_REQUIRED, FORBIDDEN, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE`.
+- Xato kodlari: `AUTH_REQUIRED, INVALID_CREDENTIALS, FORBIDDEN, NOT_FOUND, CONFLICT, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE`.
+- A'zo bo'lmagan uyning resurslari → `404 NOT_FOUND` (403 emas, ID taxmin qilinmasin). A'zo, lekin ruxsat yo'q → `403 FORBIDDEN`.
 - OpenAPI `/api/v1/docs` (productionda faqat admin).
 
 ---

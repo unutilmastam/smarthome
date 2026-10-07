@@ -44,3 +44,16 @@ def test_passenger_wsgi_serves_health():
     body = b"".join(passenger_wsgi.application(environ, start_response))
     assert status_holder["status"].startswith("200")
     assert json.loads(body)["data"]["status"] == "ok"
+
+
+def test_swagger_docs_page(client):
+    r = client.get("/api/v1/docs")
+    assert r.status_code == 200
+    assert "swagger" in r.text.lower()
+
+
+def test_unknown_route_uses_error_envelope(client):
+    r = client.get("/api/v1/nope")
+    assert r.status_code == 404
+    assert r.json() == {"data": None, "error": {"code": "NOT_FOUND", "message": "Not Found"},
+                        "meta": {}}

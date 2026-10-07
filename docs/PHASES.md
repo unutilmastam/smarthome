@@ -75,18 +75,18 @@ Tugash mezoni: CI yashil.
 **Maqsad:** foydalanuvchi kiradi, uy/xona/qurilma yaratadi; hamma narsa DB'da va audit'da.
 
 Vazifalar:
-- [ ] SQLAlchemy 2 modellari + Alembic birinchi migratsiya: `users, auth_sessions, homes, home_members, floors, rooms, hubs, devices, device_capabilities, device_state, cameras, audit_log`.
-- [ ] Vaqt: DB'da UTC; ORM'da `UTCDateTime` turi (SQLite va Postgres'da bir xil, naive datetime taqiqlangan).
-- [ ] Auth: Argon2id parol, access JWT 15 daq, refresh token 30 kun (DB'da faqat SHA-256), **rotatsiya**; eski refresh qayta ishlatilsa — userning barcha sessiyalari bekor. `logout`, `logout-all`, `me`, `password` (boshqa sessiyalar bekor), `pin`.
-- [ ] Login himoyasi: IP bo'yicha rate limit + DB'da `failed_logins/locked_until` (5 xato → 5 daq blok). Mavjud bo'lmagan email uchun ham bir xil vaqt (dummy hash).
-- [ ] Ommaviy ro'yxatdan o'tish **yo'q**. Birinchi owner: `python -m app.cli create-owner --email ...` (cPanel Terminal'da ishlaydi).
-- [ ] Rollar va ruxsatlar: `app/core/permissions.py` (ARCHITECTURE 9-bo'lim). Faqat owner a'zo qo'sha oladi; ikkinchi owner yaratib bo'lmaydi; owner'ni o'chirib bo'lmaydi.
-- [ ] A'zo bo'lmagan uy/qurilmaga so'rov → **404** (403 emas — ID'ni taxmin qilib bo'lmasin).
-- [ ] CRUD: homes, members, floors, rooms, devices (capabilities bilan), hubs (yaratishda `hub_token` + `signing_key_hex` bir marta qaytadi), `revoke`.
-- [ ] Qurilma yaratishda capability va `unsupported` atributlar contracts bo'yicha tekshiriladi.
-- [ ] Qurilma javobi: har bir capability'ning **har bir atributi** chiqadi; ma'lumot yo'q → `quality: unknown`, `not_supported`, eskirgan → `stale`; Hub offline → availability `unknown` (ARCHITECTURE 4.2).
-- [ ] Javob formati `{data, error, meta}`, xato kodlari ARCHITECTURE 8-bo'limdagidek. Ro'yxatlarda `limit/offset`.
-- [ ] Audit: login, a'zo, qurilma, hub o'zgarishlari. API'da audit'ni o'zgartirish/o'chirish yo'q.
+- [x] SQLAlchemy 2 modellari + Alembic birinchi migratsiya: `users, auth_sessions, homes, home_members, floors, rooms, hubs, devices, device_capabilities, device_state, cameras, audit_log`.
+- [x] Vaqt: DB'da UTC; ORM'da `UTCDateTime` turi (SQLite va Postgres'da bir xil, naive datetime taqiqlangan).
+- [x] Auth: Argon2id parol, access JWT 15 daq, refresh token 30 kun (DB'da faqat SHA-256), **rotatsiya**; eski refresh qayta ishlatilsa — userning barcha sessiyalari bekor. `logout`, `logout-all`, `me`, `password` (boshqa sessiyalar bekor), `pin`.
+- [x] Login himoyasi: IP bo'yicha rate limit + DB'da `failed_logins/locked_until` (5 xato → 5 daq blok). Mavjud bo'lmagan email uchun ham bir xil vaqt (dummy hash).
+- [x] Ommaviy ro'yxatdan o'tish **yo'q**. Birinchi owner: `python -m app.cli create-owner --email ...` (cPanel Terminal'da ishlaydi).
+- [x] Rollar va ruxsatlar: `app/core/permissions.py` (ARCHITECTURE 9-bo'lim). Faqat owner a'zo qo'sha oladi; ikkinchi owner yaratib bo'lmaydi; owner'ni o'chirib bo'lmaydi.
+- [x] A'zo bo'lmagan uy/qurilmaga so'rov → **404** (403 emas — ID'ni taxmin qilib bo'lmasin).
+- [x] CRUD: homes, members, floors, rooms, devices (capabilities bilan), hubs (yaratishda `hub_token` + `signing_key_hex` bir marta qaytadi), `revoke`.
+- [x] Qurilma yaratishda capability va `unsupported` atributlar contracts bo'yicha tekshiriladi.
+- [x] Qurilma javobi: har bir capability'ning **har bir atributi** chiqadi; ma'lumot yo'q → `quality: unknown`, `not_supported`, eskirgan → `stale`; Hub offline → availability `unknown` (ARCHITECTURE 4.2).
+- [x] Javob formati `{data, error, meta}`, xato kodlari ARCHITECTURE 8-bo'limdagidek. Ro'yxatlarda `limit/offset`.
+- [x] Audit: login, a'zo, qurilma, hub o'zgarishlari. API'da audit'ni o'zgartirish/o'chirish yo'q.
 
 Testlar (SQLite + PostgreSQL'da): login/refresh/rotatsiya/reuse, lock, rollar matritsasi, 404 izolyatsiyasi, qurilma atributlari `unknown/not_supported`, `alembic upgrade head` toza Postgres'da.
 Tugash mezoni: barcha testlar o'tadi; OpenAPI `/api/v1/docs` ochiladi.

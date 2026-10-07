@@ -1,7 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useDevices, useRooms } from "../api/hooks";
+import { AddRoomForm } from "../components/AddForms";
 import { DeviceCard } from "../components/DeviceCard";
 import { useLive } from "../components/Layout";
+import { can } from "../lib/contracts";
 import { useCurrentHome } from "../lib/home";
 
 export function Rooms() {
@@ -13,7 +15,9 @@ export function Rooms() {
   const list = devices.data ?? [];
   const groups = [...(rooms.data ?? []).map((r) => ({ id: r.id, name: r.name, type: r.type })),
     { id: null as string | null, name: t("devices.noRoom"), type: null }];
-  if (!rooms.data?.length && !list.length) return <p className="muted">{t("rooms.empty")}</p>;
+  const addForm = home && can(home.my_role, "configure") &&
+    <div style={{ marginTop: 16, maxWidth: 560 }}><AddRoomForm homeId={home.id} /></div>;
+  if (!rooms.data?.length && !list.length) return <><p className="muted">{t("rooms.empty")}</p>{addForm}</>;
   return (
     <>
       <h2>{t("rooms.title")}</h2>
@@ -27,6 +31,7 @@ export function Rooms() {
           </section>
         );
       })}
+      {addForm}
     </>
   );
 }

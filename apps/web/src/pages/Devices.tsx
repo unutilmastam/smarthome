@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDevices, useRooms } from "../api/hooks";
+import { AddDeviceForm } from "../components/AddForms";
 import { DeviceCard } from "../components/DeviceCard";
 import { useLive } from "../components/Layout";
-import { CAPABILITIES } from "../lib/contracts";
+import { CAPABILITIES, can } from "../lib/contracts";
 import { useCurrentHome } from "../lib/home";
 
 export function Devices() {
@@ -41,6 +42,9 @@ export function Devices() {
       </div>
       {devices.isLoading ? <p>{t("app.loading")}</p> : list.length === 0 ? <p className="muted">{t("devices.noMatch")}</p> :
         <div className="grid">{list.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>}
+      {home && can(home.my_role, "configure") && (
+        <div style={{ marginTop: 16, maxWidth: 560 }}><AddDeviceForm homeId={home.id} rooms={rooms.data ?? []} /></div>
+      )}
     </>
   );
 }

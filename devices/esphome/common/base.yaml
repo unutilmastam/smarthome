@@ -1,0 +1,62 @@
+# Shared by every ESPHome device. Include with:
+#   packages:
+#     base: !include common/base.yaml
+# Requires substitutions: device_key, friendly_name. Secrets: secrets.yaml (never committed).
+esphome:
+  name: ${device_key}
+  friendly_name: ${friendly_name}
+
+logger:
+  level: INFO
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # No fallback access point: an open AP next to the house is an attack surface.
+
+# Native API only for the ESPHome dashboard on the hub (logs, OTA). Encrypted.
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# NTP so that logs and schedules are right (ARCHITECTURE 0.13). Internally UTC.
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: UTC
+    servers: [!secret ntp_server, 0.pool.ntp.org, 1.pool.ntp.org]
+
+# Local broker on the hub only. Username == device_key (mosquitto ACL, ARCHITECTURE 5).
+mqtt:
+  id: mqtt_client
+  broker: !secret mqtt_broker
+  port: 1883
+  username: ${device_key}
+  password: !secret mqtt_password
+  client_id: ${device_key}
+  discovery: false
+  # Our own contract topics only; ESPHome's default per-component topics are disabled.
+  topic_prefix: null
+  log_topic: null
+  birth_message:
+    topic: home/${device_key}/availability
+    payload: online
+    qos: 1
+    retain: true
+  will_message:
+    topic: home/${device_key}/availability
+    payload: offline
+    qos: 1
+    retain: true
+  shutdown_message:
+    topic: home/${device_key}/availability
+    payload: offline
+    qos: 1
+    retain: true
+
+# Reboot if the broker is gone for 15 min (watchdog); relays keep their safe state.
+  reboot_timeout: 15min

@@ -184,10 +184,10 @@ Tugash mezoni: `https://<domen>/api/v1/health` → ok; telefondan simulyator bos
 
 ## Faza 8 — Birinchi real qurilma (ESP32 rele + chiroq)
 
-- [ ] Hub apparati o'rnatiladi (`infra/hub/install.md`: Ubuntu, Docker, Tailscale, UPS/NUT).
-- [ ] `devices/esphome/light-relay.yaml`: shifrlangan API kaliti, OTA paroli, MQTT (lokal), LWT, `restore_mode`, NTP.
-- [ ] `services/hub/adapters/esphome`: ESPHome MQTT ↔ contracts.
-- [ ] Sinov: yoqish/o'chirish, Wi-Fi uzilishi, svet o'chib-yonishi, internet uzilishi (`hub.local`).
+- [~] Hub apparati o'rnatiladi — yo'riqnoma `infra/hub/install.md` tayyor; apparat yo'q.
+- [x] `devices/esphome/light-relay.yaml`: shifrlangan API kaliti, OTA paroli, MQTT (lokal), LWT, `restore_mode`, NTP.
+- [x] ~~`services/hub/adapters/esphome`~~ → ADR 0010: ESPHome proshivkasi lokal shartnomani o'zi gapiradi (ack proshivkadan).
+- [ ] Sinov (`docs/hardware/tests/light-relay.md`, `[REAL]` — apparat kerak): yoqish/o'chirish, Wi-Fi uzilishi, svet o'chib-yonishi, internet uzilishi (`hub.local`).
 
 Tugash mezoni: `[REAL]` testlar hisobotda.
 

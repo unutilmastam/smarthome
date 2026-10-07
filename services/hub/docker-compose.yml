@@ -29,6 +29,18 @@ services:
     depends_on:
       - mosquitto
 
+  # ESPHome dashboard: compile + OTA from the browser (ARCHITECTURE 15.5). LAN/Tailscale only
+  # (ufw), password protected. Configs: ./esphome (copy devices/esphome/* + secrets.yaml).
+  esphome:
+    image: ghcr.io/esphome/esphome:2026.9.1
+    restart: always
+    network_mode: host   # mDNS + OTA to devices on the LAN
+    environment:
+      USERNAME: ${ESPHOME_USERNAME:-admin}
+      PASSWORD: ${ESPHOME_PASSWORD:?set ESPHOME_PASSWORD in .env}
+    volumes:
+      - ./esphome:/config
+
   simulator:
     profiles: ["sim"]
     build:

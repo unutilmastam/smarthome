@@ -83,7 +83,7 @@ jobs:
         working-directory: services/hub
         run: |
           cp .env.example .env && touch mosquitto/passwd
-          SIM_DEVICE_PASSWORD=ci docker compose --profile sim config -q
+          SIM_DEVICE_PASSWORD=ci ESPHOME_PASSWORD=ci docker compose --profile sim config -q
 
   web:
     name: web (typecheck, unit, build, e2e [SIM])
@@ -123,3 +123,33 @@ jobs:
         with:
           name: playwright-traces
           path: apps/web/test-results
+
+  firmware:
+    name: firmware (esphome config + compile)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: devices/esphome
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('devices/esphome/**/*.yaml') }}
+          restore-keys: pio-
+      - name: Install ESPHome
+        run: python -m pip install esphome==2026.9.1
+      - name: Dummy secrets (CI only)
+        run: |
+          KEY=$(python -c "import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())")
+          sed "s#^api_encryption_key: .*#api_encryption_key: \"$KEY\"#" secrets.example.yaml > secrets.yaml
+      - name: Validate and compile every device
+        run: |
+          for f in *.yaml; do
+            case "$f" in secrets*.yaml) continue;; esac
+            esphome config "$f" > /dev/null
+            esphome compile "$f"
+          done

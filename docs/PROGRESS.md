@@ -13,7 +13,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 5 | Real-time (managed MQTT) | qisman: `[SIM]` tugadi, haqiqiy EMQX hisobida sinalmagan |
 | 6 | PWA (veb + telefon + iPad) | tugadi `[SIM]` (haqiqiy telefon/iPad'da emas, emulyatsiyada) |
 | 7 | cPanel'ga deploy | qisman: hamma narsa tayyor va lokal sinaldi; **haqiqiy hostingga deploy qilinmagan** (SSH kaliti va GitHub Secrets egasida) |
-| 8 | Birinchi real qurilma | boshlanmagan |
+| 8 | Birinchi real qurilma (ESP32 rele) | qisman: proshivka, o'rnatish yo'riqnomasi va UI tayyor; **apparatda sinalmagan** (`[REAL]` jadval bo'sh) |
+| 9 | Elektr monitoring | boshlanmagan |
 
 ---
 
@@ -482,3 +483,44 @@ Hal qilinmagan xavflar / egasi bajarishi kerak:
 - PWA'da qurilma va xona qo'shish UI'i hali yo'q — hozircha faqat API orqali. Bu Faza 8 dan oldin kerak bo'ladi.
 
 Keyingi faza: 8 — Birinchi real qurilma (ESP32 rele + chiroq).
+
+---
+
+## Faza 8 — Birinchi real qurilma (ESP32 rele + chiroq) — 2026-10-07
+Holat: **qisman**. Apparat yo'q (H-02, H-08), shuning uchun `[REAL]` testlarning **birortasi ham bajarilmagan**. Tugash mezoni ("`[REAL]` testlar hisobotda") **bajarilmagan**. Tayyorlangan narsalar pastda.
+
+Qilingan ishlar:
+- ADR 0010: ESPHome proshivkasi lokal MQTT shartnomasini **o'zi gapiradi** (`on_json_message` + `publish_json`). Ack proshivkadan keladi. Hub'da alohida "adapter" yo'q, PHASES dagi tegishli band ADR bilan almashtirildi. Sabab: standart ESPHome topiklarida ack yo'q, adapter ack'ni o'zi "yasashi" kerak bo'lardi.
+- `devices/esphome/common/base.yaml`:
+  - Wi-Fi (ochiq zaxira AP yo'q);
+  - shifrlangan native API;
+  - OTA paroli;
+  - SNTP (UTC);
+  - MQTT: login = `device_key`; standart topiklar o'chirilgan; `birth`/`will`/`shutdown` → `home/<key>/availability` (retained);
+  - broker 15 daqiqa yo'q bo'lsa qayta yuklanish.
+- `devices/esphome/light-relay.yaml`:
+  - rele `restore_mode: ALWAYS_OFF`;
+  - devordagi tugma Hub va internetsiz ham ishlaydi;
+  - `cmd` → tekshiruv → ack (`acked` yoki `rejected: invalid_params`) → rele;
+  - retained `state` doim to'liq holat;
+  - `command_id` bo'lmagan xabar e'tiborsiz qoldiriladi.
+- `devices/esphome/secrets.example.yaml` (`secrets.yaml` gitignore'da), har bir qurilmaga alohida kalit va parollar.
+- `infra/hub/install.md`: Ubuntu 24.04 o'rnatish (kompyutersiz variantlar bilan), DHCP reservation, `hub.local` (avahi), ufw (faqat LAN va Tailscale), Tailscale SSH, UPS/NUT va "Restore on AC power loss", stack'ni ishga tushirish, ESPHome Dashboard, yangilanishlar va tekshiruv ro'yxati.
+- `docker-compose.yml` ga ESPHome Dashboard qo'shildi (parol bilan, `network_mode: host`, ufw bilan faqat LAN/Tailscale).
+- PWA: **qurilma qo'shish** (kalit, nom, xona, imkoniyatlar; klapan uchun `max_runtime_s` majburiy) va **xona qo'shish**. Usiz egasi kompyutersiz qurilma qo'sha olmasdi.
+- `docs/hardware/tests/light-relay.md`: 12 bandli `[REAL]` sinov jadvali. Elektrik yoki egasi to'ldiradi.
+- CI'ga `firmware` job qo'shildi: har bir YAML uchun `esphome config` va `esphome compile`.
+
+Testlar:
+- `esphome config light-relay.yaml` (ESPHome 2026.9.1) → **Configuration is valid** (lokal).
+- `esphome compile` lokal **bajarilmadi**: muhitning tarmoq siyosati PlatformIO registry'ni bloklaydi (403). Kompilyatsiya, ya'ni lambda C++ kodini tekshirish, CI'dagi `firmware` job'da bo'ladi. Natija keyingi CI run'da ko'rinadi.
+- `apps/web`: `tsc` OK, `vitest` → 26 passed (qurilma qo'shish, klapan uchun `max_runtime_s` majburiyligi, backend xatosini ko'rsatish).
+- `docker compose --profile sim config` → OK. ESPHome image tegi (`2026.9.1`) Docker bilan tekshirilmagan.
+- `[REAL]`: **0 / 12**.
+
+Hal qilinmagan xavflar:
+- Birinchi proshivkani yozish uchun USB va Chrome (Web Serial) kerak; iPad Safari'da bu ishlamaydi (install.md'da muqobillar yozilgan).
+- Internet uzilganda telefondan boshqarish uchun Hub'da `local-api` kerak. U hali yo'q; hozircha faqat devordagi tugma ishlaydi.
+- `on` holati — firmware boshqarayotgan rele chiqishi, chiroq haqiqatan yonganining isboti emas. Kuchliroq tasdiq uchun tok sensori (ARCHITECTURE 10) — ixtiyoriy.
+
+Keyingi faza: 9 — Elektr monitoring.

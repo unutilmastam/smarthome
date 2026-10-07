@@ -1,0 +1,88 @@
+# ESP32 + relay for a light circuit (ARCHITECTURE 10: "Chiroq").
+# Speaks the local MQTT contract directly (packages/contracts/schemas/local-mqtt.schema.json):
+#   home/<key>/cmd  -> {"schema":1,"command_id","capability":"switch","action","params"}
+#   home/<key>/ack  <- {"schema":1,"command_id","status":"acked"|"rejected",...}
+#   home/<key>/state<- retained FULL state {"schema":1,"source":"reported","states":{"switch":{"on":bool}}}
+# The "on" value is the relay output as driven by the firmware. A current sensor
+# (optional, ARCHITECTURE 10) would be the stronger proof that the lamp is lit.
+#
+# Mains wiring is done ONLY by a qualified electrician (ARCHITECTURE 10, H-08).
+
+substitutions:
+  device_key: garden_lights
+  friendly_name: "Bog' chiroqlari"
+  relay_pin: GPIO26
+  button_pin: GPIO0
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+switch:
+  - platform: gpio
+    id: relay
+    name: relay
+    pin: ${relay_pin}
+    # Power returns -> light stays OFF until someone turns it on (ARCHITECTURE 12).
+    restore_mode: ALWAYS_OFF
+    mqtt_id: relay_mqtt
+    state_topic: null
+    command_topic: null
+    on_state:
+      - script.execute: publish_state
+
+# Local wall button keeps working without hub, broker or internet.
+binary_sensor:
+  - platform: gpio
+    id: local_button
+    pin:
+      number: ${button_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+    state_topic: null
+    on_press:
+      - switch.toggle: relay
+
+script:
+  - id: publish_state
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            root["states"]["switch"]["on"] = id(relay).state;
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "switch") { ack("rejected", "invalid_params"); return; }
+            if (act == "turn_on") { ack("acked", nullptr); id(relay).turn_on(); }
+            else if (act == "turn_off") { ack("acked", nullptr); id(relay).turn_off(); }
+            else if (act == "toggle") { ack("acked", nullptr); id(relay).toggle(); }
+            else { ack("rejected", "invalid_params"); }

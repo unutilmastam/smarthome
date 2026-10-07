@@ -1,2 +1,3 @@
 mosquitto/passwd
 *.sqlite3
+esphome/

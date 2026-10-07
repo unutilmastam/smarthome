@@ -1,3 +1,3 @@
 # infra/hub
 
-Hub o'rnatish (Ubuntu, Docker, Tailscale, UPS/NUT), backup. Faza 8.
+- [install.md](install.md) — Hub'ni noldan o'rnatish (Ubuntu, Docker, Tailscale, UPS/NUT, ESPHome).

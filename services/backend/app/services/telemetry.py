@@ -7,6 +7,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, delete, func, select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
 from app.core.contracts import Contracts
@@ -25,6 +26,17 @@ def _parse(ts: str) -> datetime:
 
 def _numeric(spec: dict) -> bool:
     return spec.get("type") in ("number", "integer")
+
+
+def _upsert_1m(db: Session, values: dict) -> None:
+    """INSERT ... ON CONFLICT DO UPDATE: a bucket sent twice (retry, or two batches racing)
+    simply overwrites itself instead of failing with a unique-key error."""
+    dialect = db.get_bind().dialect.name
+    insert = postgresql.insert if dialect == "postgresql" else sqlite.insert
+    stmt = insert(Telemetry1m).values(**values)
+    db.execute(stmt.on_conflict_do_update(
+        index_elements=["device_id", "metric", "ts"],
+        set_={k: stmt.excluded[k] for k in ("avg", "min", "max", "last", "count")}))
 
 
 def ingest(db: Session, hub: Hub, contracts: Contracts, batch: dict) -> dict:
@@ -58,12 +70,9 @@ def ingest(db: Session, hub: Hub, contracts: Contracts, batch: dict) -> dict:
         if any(True for v in (it["min"], it["max"]) for _ in validator.iter_errors(v)):
             errors.append({"index": i, "error": "out_of_range"})
             continue
-        row = db.get(Telemetry1m, (d.id, it["metric"], ts))
-        if row is None:
-            row = Telemetry1m(device_id=d.id, metric=it["metric"], ts=ts)
-            db.add(row)
-        row.avg, row.min, row.max = it["avg"], it["min"], it["max"]
-        row.last, row.count = it["last"], it["count"]
+        _upsert_1m(db, {"device_id": d.id, "metric": it["metric"], "ts": ts, "avg": it["avg"],
+                        "min": it["min"], "max": it["max"], "last": it["last"],
+                        "count": it["count"]})
         accepted += 1
     db.commit()
     return {"accepted": accepted, "rejected": len(errors), "errors": errors[:50]}

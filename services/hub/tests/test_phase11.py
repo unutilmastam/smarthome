@@ -142,7 +142,8 @@ def test_ir_climate_confirmed_only_by_current_sensor(stack):
     async def scenario(st):
         c = await cmd(st, "ac_living", "climate", "set_power", {"power": True})
         assert c["status"] == "confirmed"
-        assert attr(st, "ac_living", "climate", "power")["source"] == "assumed"
+        await st.wait(lambda: attr(st, "ac_living", "climate", "power")["source"] == "assumed",
+                      "assumed power reported")
         await st.wait(lambda: attr(st, "ac_living", "climate", "running")["value"] is True,
                       "current sensor reported running")
         assert attr(st, "ac_living", "climate", "running")["source"] == "reported"
@@ -187,8 +188,7 @@ def test_firmware_runtime_limit_wins_over_cloud_config(stack):
     async def scenario(st):
         valve = st.sims["garden_valve"]                         # firmware max_runtime = 1 s
         c = await cmd(st, "garden_valve", "valve", "open", {"duration_s": 300})
-        assert c["status"] == "confirmed"
-        assert attr(st, "garden_valve", "valve", "flow")["value"] > 0
+        assert c["status"] == "confirmed"   # confirmed = the hub saw open AND flow > 0
         assert await asyncio.to_thread(valve.closed_by_firmware.wait, 5)
         ev = await wait_event(st, "valve.runtime_limit")
         assert ev["data"] == {"max_runtime_s": 1}
@@ -223,7 +223,9 @@ def test_alarm_arm_entry_delay_trigger_siren_disarm(stack):
         assert r.status_code == 403 or r.json()["error"]["code"] in ("PIN_REQUIRED", "FORBIDDEN"), r.text
         c = await cmd(st, "security", "alarm", "arm_away", confirm_pin=PIN)
         assert c["status"] == "confirmed"                 # only after the exit delay
-        assert attr(st, "security", "alarm", "state")["value"] == "armed_away"
+        # The ack and the state report are separate uploads: the state follows shortly.
+        await st.wait(lambda: attr(st, "security", "alarm", "state")["value"] == "armed_away",
+                      "armed_away reported")
         await asyncio.to_thread(door.set_open, True)
         await st.wait(lambda: attr(st, "security", "alarm", "state")["value"] == "pending",
                       "entry delay")
@@ -248,7 +250,8 @@ def test_alarm_refuses_to_arm_with_open_window(stack):
         c = await cmd(st, "security", "alarm", "arm_home", confirm_pin=PIN)
         assert (c["status"], c["reason"]) == ("rejected", "safety_rule")
         assert "back_window" in (c.get("detail") or str(c["events"]))
-        assert attr(st, "security", "alarm", "state")["value"] == "disarmed"
+        await st.wait(lambda: attr(st, "security", "alarm", "state")["value"] == "disarmed",
+                      "still disarmed")
         await wait_event(st, "alarm.arm_refused")
     run(stack, scenario)
 

@@ -45,6 +45,28 @@ def test_ingest_and_idempotent_resend(hub, meter, dbs):
     assert len(rows) == 1 and rows[0].avg == 401.0
 
 
+def test_ingest_survives_a_racing_duplicate(hub, meter, dbs, database, monkeypatch):
+    """CI (hub 3.10): two flushes sent the same minute at the same time; the second request
+    used to fail with a unique-key error (500) because it inserted after a racing insert."""
+    it = item()
+    ts = datetime.fromisoformat(it["ts"].replace("Z", "+00:00"))
+    with database.sessionmaker() as other:      # the racing request committed first
+        dev = other.scalar(select(Device).where(Device.key == "main_meter"))
+        other.add(Telemetry1m(device_id=dev.id, metric=it["metric"], ts=ts, avg=1.0, min=1.0,
+                              max=1.0, last=1.0, count=1))
+        other.commit()
+    # The window of the race: a lookup in this request still saw "no row".
+    from sqlalchemy.orm import Session
+    real_get = Session.get
+    monkeypatch.setattr(Session, "get", lambda self, entity, ident, **kw:
+                        None if entity is Telemetry1m else real_get(self, entity, ident, **kw))
+    r = post(hub, it, {**it, "avg": 402.0})      # and a duplicate inside the same batch
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["accepted"] == 2
+    rows = dbs.scalars(select(Telemetry1m)).all()
+    assert len(rows) == 1 and rows[0].avg == 402.0 and rows[0].count == 6
+
+
 def test_ingest_rejections(hub, meter, dbs):
     future = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(minutes=10)
     r = post(hub,

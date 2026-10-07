@@ -70,6 +70,8 @@ class Gateway:
         self.disk_usage_pct: Optional[float] = None
         self._tasks: list = []
         self._stop = asyncio.Event()
+        # One flush at a time: two concurrent flushes would send the same outbox item twice.
+        self._flush_lock = asyncio.Lock()
         if cached:  # last known config: the hub works offline from the first second
             self._apply_config(cached)
 
@@ -535,6 +537,10 @@ class Gateway:
 
     async def flush_once(self) -> bool:
         """Send buffered acks then reports, oldest first. False if the backend is unreachable."""
+        async with self._flush_lock:
+            return await self._flush()
+
+    async def _flush(self) -> bool:
         self.queue_dirty()
         self.queue_telemetry()
         for kind in ("ack", "report", "event", "telemetry"):

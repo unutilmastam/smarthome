@@ -754,6 +754,10 @@ Qilingan ishlar:
 - Backend `expire_due` da eski (sessiya keshidagi) holat bilan ishlaganligi sababli, ack kelgan buyruq soniyalar ichida noto'g'ri `timeout/no_ack` bo'lib qolardi.
 - Bu Hub integratsiya testida kamdan-kam paydo bo'ladigan nosozlikdan topildi.
 - Tuzatish: `populate_existing` va vaqtni Python'da qayta tekshirish. Regressiya testi tuzatishsiz yiqiladi, tuzatish bilan o'tadi.
+- CI (`hub 3.10`, oldingi commit) yana bitta haqiqiy xatoni ko'rsatdi:
+  - Hub'da ikkita `flush_once` bir vaqtda ishlab, bitta telemetriya paketini ikki marta yuborgan;
+  - backend esa "o'qi → qo'sh" usulida yozgani uchun unique-key xatosi (500) bergan.
+- Tuzatish: Hub'da flush qulf bilan bajariladi, backend'da `INSERT … ON CONFLICT DO UPDATE` (SQLite va PostgreSQL). Ikkala regressiya testi tuzatishsiz yiqiladi.
 
 Yaratilgan/o'zgartirilgan fayllar:
 - `packages/contracts/capabilities.json`, `schemas/{capabilities,local-mqtt,hub-events}.schema.json`;

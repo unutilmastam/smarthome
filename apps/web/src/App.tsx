@@ -11,6 +11,7 @@ import { Energy } from "./pages/Energy";
 import { HubStatus } from "./pages/HubStatus";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
+import { More } from "./pages/More";
 import { Rooms } from "./pages/Rooms";
 import { Settings } from "./pages/Settings";
 
@@ -33,6 +34,7 @@ export function App() {
           <Route path="hub" element={<HubStatus />} />
           <Route path="settings" element={<Settings />} />
           <Route path="members" element={<Members />} />
+          <Route path="more" element={<More />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

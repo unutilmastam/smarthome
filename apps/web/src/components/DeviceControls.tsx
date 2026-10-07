@@ -16,12 +16,17 @@ const attrLabel = (t: (k: string) => string, a: string) => t(`attr.${a}`);
 
 function SwitchCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const { t } = useTranslation();
+  const v = view.attributes.on;
+  const known = v && (v.quality === "good" || v.quality === "stale") && typeof v.value === "boolean";
+  // The thumb follows the REPORTED state only; while a command is in flight it shimmers.
+  const state = known ? (v!.value ? "on" : "off") : "unknown";
   return (
     <>
-      <ValueView label={attrLabel(t, "on")} value={view.attributes.on} pending={pending} big />
-      <div className="row">
-        <button className="primary" disabled={disabled} onClick={() => send(cap, "turn_on")}>{t("action.turn_on")}</button>
-        <button disabled={disabled} onClick={() => send(cap, "turn_off")}>{t("action.turn_off")}</button>
+      <ValueView label={attrLabel(t, "on")} value={v} pending={pending} big />
+      <div className="toggle" data-state={state} data-pending={pending}>
+        <span className="thumb" aria-hidden="true" />
+        <button disabled={disabled} aria-pressed={state === "on"} onClick={() => send(cap, "turn_on")}>{t("action.turn_on")}</button>
+        <button disabled={disabled} aria-pressed={state === "off"} onClick={() => send(cap, "turn_off")}>{t("action.turn_off")}</button>
       </div>
     </>
   );
@@ -91,7 +96,7 @@ function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & 
           pending={pending && a === confirmAttr} big={a === confirmAttr} />
       ))}
       {cap === "contactor" && <p className="muted" style={{ margin: 0 }}>{t("control.auxNote")}</p>}
-      <div className="row">
+      <div className="seg">
         {actions.map((a, i) => (
           <button key={a} className={i === 0 ? "primary" : ""} disabled={disabled}
             onClick={() => send(cap, a)}>{t(`action.${a}`)}</button>

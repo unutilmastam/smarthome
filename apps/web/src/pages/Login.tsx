@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { useSession } from "../auth/session";
+import { Icon } from "../components/Icon";
 
 export function Login() {
   const { t } = useTranslation();
@@ -22,9 +23,13 @@ export function Login() {
   };
 
   return (
-    <main style={{ maxWidth: 380, paddingTop: "12vh" }}>
+    <main className="login">
       <form className="card" onSubmit={submit}>
-        <h2 style={{ margin: 0 }}>{t("login.title")}</h2>
+        <span className="brand-mark"><Icon name="home" size={28} /></span>
+        <div>
+          <h2 style={{ margin: 0 }}>{t("login.title")}</h2>
+          <p className="muted" style={{ margin: "4px 0 0" }}>{t("login.subtitle")}</p>
+        </div>
         <label>{t("login.email")}<input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
         <label>{t("login.password")}<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
         {error && <p className="error" role="alert">{error}</p>}

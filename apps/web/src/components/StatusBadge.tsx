@@ -7,7 +7,8 @@ export function Badge({ kind, label }: { kind: BadgeKind; label?: string }) {
   const text = label ?? t(`status.${kind}`);
   return (
     <span className={`badge ${kind}`} data-kind={kind} title={text}>
-      <span aria-hidden="true">{BADGE_ICON[kind]}</span>
+      <span className="dot" aria-hidden="true" />
+      <span className="sr-only">{BADGE_ICON[kind]}</span>
       <span>{text}</span>
     </span>
   );

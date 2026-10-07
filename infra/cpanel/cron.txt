@@ -1,12 +1,7 @@
-# cPanel -> Cron Jobs. Replace APP with the Python app root and VENV with the path
-# cPanel shows in "Setup Python App" (source .../bin/activate). Times are server time.
-#
-# Every minute (if the host allows it; otherwise */5 — commands are also expired on
-# every hub poll, so a slower cron only delays the status of offline homes):
-* * * * *   cd APP && VENV/bin/python -m app.jobs.expire_due >> ~/logs/sh-expire.log 2>&1
-# Hourly energy roll-up (1m -> 1h, daily kWh) at :07
-7 * * * *   cd APP && VENV/bin/python -m app.jobs.energy >> ~/logs/sh-energy.log 2>&1
-# Daily retention 03:17
-17 3 * * *  cd APP && VENV/bin/python -m app.jobs.retention >> ~/logs/sh-retention.log 2>&1
-# Daily PostgreSQL backup 03:41 (keeps 14 days in ~/backups, outside public_html)
-41 3 * * *  sh APP/backup.sh >> ~/logs/sh-backup.log 2>&1
+# Installed AUTOMATICALLY by deploy.sh on every deploy (lines marked "# smarthome-managed").
+# Listed here for reference only:
+#   * * * * *   python -m app.jobs.expire_due     (every minute; commands also expire on hub polls)
+#   7 * * * *   python -m app.jobs.energy         (hourly 1m->1h roll-up and daily kWh)
+#   17 3 * * *  python -m app.jobs.retention      (daily cleanup)
+#   41 3 * * *  sh backup.sh                      (daily pg_dump, 14 days, ~/sh-deploy/daily)
+# Pre-deploy dumps (last 10) are separate: ~/sh-deploy/backups.

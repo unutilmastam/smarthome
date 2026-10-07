@@ -15,6 +15,10 @@ mkdir -p "$OUT/api/contracts"
 cp -R packages/contracts/capabilities.json packages/contracts/roles.json \
    packages/contracts/schemas "$OUT/api/contracts/"
 cp infra/cpanel/backup.sh "$OUT/api/"
+cp infra/cpanel/deploy.sh "$OUT/"
+# Build id: the health check waits for exactly this commit after the restart.
+BUILD="${BUILD_ID:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+printf 'BUILD = "%s"\n' "$BUILD" > "$OUT/api/app/_build.py"
 find "$OUT/api" -name "__pycache__" -type d -prune -exec rm -rf {} +
 find "$OUT/api" -name "*.pyc" -delete
 

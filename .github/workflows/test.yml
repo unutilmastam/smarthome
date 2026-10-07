@@ -2,7 +2,9 @@ name: test
 
 on:
   push:
+    branches-ignore: [main]   # main is tested by deploy-cloud.yml (which calls this file)
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -48,6 +50,50 @@ jobs:
       - name: Backend tests
         working-directory: services/backend
         run: python -m pytest -q
+
+  migrations:
+    name: migrations (expand-only, clean PostgreSQL, deploy script)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: |
+          python -m pip install -r services/backend/requirements-dev.txt
+          (cd apps/web && npm ci && npx vite build)
+      - name: Expand-only rule (ADR 0011)
+        working-directory: services/backend
+        run: python scripts/check_migrations.py
+      - name: alembic upgrade head on a clean PostgreSQL
+        working-directory: services/backend
+        run: |
+          psql -h localhost -U postgres -c "CREATE DATABASE clean_db"
+          ENV=development DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/clean_db \
+            python -m alembic upgrade head
+      - name: deploy.sh scenarios (backup, migrate, health, automatic rollback)
+        env:
+          TEST_POSTGRES_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          python -m pip install pytest
+          python -m pytest -q infra/cpanel/tests
 
   hub:
     name: hub ${{ matrix.python }} (gateway + simulator + mosquitto)

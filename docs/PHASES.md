@@ -98,15 +98,15 @@ Tugash mezoni: barcha testlar o'tadi; OpenAPI `/api/v1/docs` ochiladi.
 **Maqsad:** buyruq yuboriladi, imzolanadi, Hub uni oladi va natija qaytadi — hali haqiqiy Hub yo'q, test mijozi bilan.
 
 Vazifalar:
-- [ ] `commands`, `command_events` jadvallari + migratsiya.
-- [ ] `POST /api/v1/commands`: qurilma a'zolikda bormi → capability bormi → action/params contracts bo'yicha → rol ruxsati → `risk: high` bo'lsa `confirm_pin` → qurilma yoqilganmi → Hub online'mi (aks holda **503 HUB_UNREACHABLE**, buyruq yaratilmaydi) → qurilma offline emasmi.
-- [ ] Idempotentlik: `(user, idempotency_key)` yagona; takror so'rov asl buyruqni qaytaradi (200).
-- [ ] Imzo: ARCHITECTURE 4.4 (hosil qilingan kalit, canonical JSON). `app/core/signing.py` + **test vektorlari** `packages/contracts/test-vectors/signing.json` (Hub ham shu vektorlar bilan tekshiriladi).
-- [ ] Muddat: oddiy 10 s, `high` 5 s (sozlanadi). Olinmagan → `expired`; olingan-javobsiz (+30 s) → `timeout`.
-- [ ] Hub API (hub token bilan): `POST /hub/heartbeat`, `GET /hub/commands` (atomik: har bir buyruq **bir marta** beriladi, `queued → sent`), `POST /hub/acks`, `POST /hub/report` (holat + availability, `device_key` bo'yicha, contracts bo'yicha tekshiriladi), `GET /hub/config`.
-- [ ] Holat faqat oldinga siljiydi (ack kech kelsa `confirmed` ni buzmaydi).
-- [ ] `GET /commands/{id}` voqealar tarixi bilan; `GET /devices/{id}/commands`.
-- [ ] Buyruq rate limit (foydalanuvchiga 60/daq).
+- [x] `commands`, `command_events` jadvallari + migratsiya.
+- [x] `POST /api/v1/commands`: qurilma a'zolikda bormi → capability bormi → action/params contracts bo'yicha → rol ruxsati → `risk: high` bo'lsa `confirm_pin` → qurilma yoqilganmi → Hub online'mi (aks holda **503 HUB_UNREACHABLE**, buyruq yaratilmaydi) → qurilma offline emasmi.
+- [x] Idempotentlik: `(user, idempotency_key)` yagona; takror so'rov asl buyruqni qaytaradi (200).
+- [x] Imzo: ARCHITECTURE 4.4 (hosil qilingan kalit, canonical JSON). `app/core/signing.py` + **test vektorlari** `packages/contracts/test-vectors/signing.json` (Hub ham shu vektorlar bilan tekshiriladi).
+- [x] Muddat: oddiy 10 s, `high` 5 s (sozlanadi). Olinmagan → `expired`; olingan-javobsiz (+30 s) → `timeout`.
+- [x] Hub API (hub token bilan): `POST /hub/heartbeat`, `GET /hub/commands` (atomik: har bir buyruq **bir marta** beriladi, `queued → sent`), `POST /hub/acks`, `POST /hub/report` (holat + availability, `device_key` bo'yicha, contracts bo'yicha tekshiriladi), `GET /hub/config`.
+- [x] Holat faqat oldinga siljiydi (ack kech kelsa `confirmed` ni buzmaydi).
+- [x] `GET /commands/{id}` voqealar tarixi bilan; `GET /devices/{id}/commands`.
+- [x] Buyruq rate limit (foydalanuvchiga 60/daq).
 
 Testlar: to'liq sikl (queued→sent→acked→confirmed), ikki marta claim qilinmasligi, muddati o'tishi, PIN'siz darvoza → rad, guest/viewer → rad, noto'g'ri params → 422, offline Hub → 503, imzo test vektorlari, boshqa uyning Hub'i ack qila olmasligi.
 Tugash mezoni: testlar o'tadi `[SIM]`.

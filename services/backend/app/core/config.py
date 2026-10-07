@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     hub_online_window_s: int = 90
     # Values older than stale_factor x report_interval_s (if configured) are stale.
     stale_factor: int = 3
+    # Command lifetimes (ARCHITECTURE 4.3).
+    command_ttl_s: int = 10
+    command_ttl_high_risk_s: int = 5
+    # sent but never acked -> timeout this long after expires_at
+    command_ack_grace_s: int = 30
+    # acked but never confirmed (confirm_attribute capabilities) -> timeout
+    command_confirm_timeout_s: int = 60
+    command_rate_limit_per_min: int = 60
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":

@@ -54,3 +54,15 @@ def purge_old(db: Session, older_than: timedelta = timedelta(days=1)) -> int:
     res = db.execute(delete(RateLimitHit).where(RateLimitHit.window_start < utcnow() - older_than))
     db.commit()
     return res.rowcount or 0
+
+
+def ensure_below(db: Session, key: str, limit: int, window_s: int,
+                 now: Optional[datetime] = None) -> None:
+    """Raise RATE_LIMITED if the current window already reached the limit (no increment)."""
+    now = now or utcnow()
+    start = _window_start(now, window_s)
+    count = db.scalar(select(RateLimitHit.count).where(
+        RateLimitHit.key == key, RateLimitHit.window_start == start))
+    if count is not None and count >= limit:
+        retry = int((start + timedelta(seconds=window_s) - now).total_seconds())
+        raise rate_limited(retry)

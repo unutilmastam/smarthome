@@ -7,8 +7,9 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 |---|---|---|
 | 0 | Tayyorgarlik (hujjatlar) | tugadi |
 | 1 | Poydevor (monorepo, contracts, CI) | tugadi, CI yashil |
-| 2 | Backend asosi (auth, uy, xona, qurilma reyestri) | tugadi |
-| 3 | Buyruqlar (imzo, hayot sikli, Hub API) | boshlanmagan |
+| 2 | Backend asosi (auth, uy, xona, qurilma reyestri) | tugadi, CI yashil |
+| 3 | Buyruqlar (imzo, hayot sikli, Hub API) | tugadi `[SIM]` |
+| 4 | Home Hub + simulyator | boshlanmagan |
 
 ---
 
@@ -160,4 +161,69 @@ Hal qilinmagan xavflar:
 Tasdiqlanmagan taxminlar:
 - Hub online oynasi 90 s (heartbeat 30 s × 3). Faza 4 da haqiqiy Hub bilan tekshiriladi.
 
+CI: `test` workflow run #2 (commit `93311f8`) → **success**.
+
 Keyingi faza: 3 — Buyruqlar (imzo, hayot sikli, Hub API).
+
+---
+
+## Faza 3 — Buyruqlar (imzo, hayot sikli, Hub API) — 2026-10-07
+Holat: tugadi `[SIM]` (haqiqiy Hub yo'q; Hub o'rnida test mijozi ishlatildi)
+
+Qilingan ishlar:
+- `commands` va `command_events` jadvallari, migratsiya `0002`. `(requested_by, idempotency_key)` yagona.
+- `POST /api/v1/commands`. Tekshiruvlar tartibi:
+  1. rate limit (foydalanuvchiga daqiqasiga 60);
+  2. idempotentlik;
+  3. a'zolik (a'zo bo'lmasa 404);
+  4. qurilmada shu capability bormi (`CAPABILITY_NOT_SUPPORTED`);
+  5. action va params contracts bo'yicha (422);
+  6. klapan uchun `duration_s` ≤ qurilmaning `max_runtime_s` i;
+  7. rol ruxsati (403);
+  8. `risk: high` bo'lsa PIN (`PIN_REQUIRED` / `PIN_INVALID`; 15 daqiqada 5 xato → keyin to'g'ri PIN ham rad etiladi);
+  9. qurilma yoqilganmi (`DEVICE_DISABLED`);
+  10. Hub online'mi (aks holda `503 HUB_UNREACHABLE`, buyruq yaratilmaydi);
+  11. qurilma offline emasmi (`DEVICE_OFFLINE`).
+- Idempotentlik: bir xil kalit va bir xil buyruq qayta yuborilsa → asl buyruq qaytadi (200, `meta.idempotent_replay`). Kalit bir xil, lekin buyruq boshqacha bo'lsa → 409.
+- Imzo: `app/core/signing.py` (ADR 0004 + 0007). Imzolangan konvert buyruq bilan birga saqlanadi va Hub'ga aynan shu konvert beriladi.
+- Test vektorlari: `packages/contracts/test-vectors/signing.json` (5 ta to'g'ri, 2 ta salbiy holat; float va UTF-8 matn bilan). Backend testi va contracts'dagi **mustaqil** test (backend kodisiz) ikkalasi ham shu vektorlarni tekshiradi.
+- Muddat: oddiy buyruq 10 s, `high` risk 5 s (sozlanadi). Hub olmagan buyruq → `expired`. Hub olgan, lekin ack bermagan (`expires_at` + 30 s) → `timeout: no_ack`. `confirm_attribute` bor capability'da ack bor, tasdiq yo'q (60 + 30 s) → `timeout: no_feedback`.
+- Hub API (`hub_token` bilan):
+  - `POST /hub/heartbeat`;
+  - `GET /hub/commands` — har bir buyruq shartli `UPDATE ... WHERE status='queued'` bilan atomik olinadi, ya'ni faqat bir marta beriladi; SQLite va Postgres'da bir xil ishlaydi;
+  - `POST /hub/acks` — `ack.schema.json` bo'yicha tekshiriladi;
+  - `POST /hub/report` — `state-report.schema.json` + atribut qiymatlari contracts bo'yicha; kelajak vaqtli, eski yoki `not_supported` atributga yozilgan qiymat rad etiladi;
+  - `GET /hub/config`.
+- Holat faqat oldinga siljiydi: kech kelgan ack `confirmed` ni buzmaydi. E'tiborsiz qolgan voqealar ham tarixda `applied: false` bilan saqlanadi.
+- Boshqa uyning Hub'i bu uyning buyruqlarini ko'rmaydi va ack qila olmaydi (`not_found`). Bekor qilingan (revoked) Hub tokeni → 401.
+- `GET /commands/{id}` (voqealar tarixi bilan), `GET /devices/{id}/commands` (sahifalab).
+- Muddati o'tgan buyruqlarni tekshirish (`expire_due`) hozir so'rov paytida chaqiriladi (Hub polling, buyruqni o'qish). Faza 7 da cron'ga ham ulanadi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `services/backend/app/models/command.py`, `migrations/versions/0002_commands.py`
+- `services/backend/app/services/{commands,hub_reports}.py`, `app/api/hub_auth.py`, `app/api/v1/{commands,hub}.py`, `app/schemas/commands.py`, `app/core/signing.py`, `app/services/rate_limit.py`, `app/core/config.py`
+- `packages/contracts/test-vectors/signing.json`, `packages/contracts/tests/test_signing_vectors.py`
+- `services/backend/tests/{test_commands,test_hub_api}.py`
+- `ARCHITECTURE.md` (xato kodlari: `PIN_REQUIRED`, `PIN_INVALID`, `DEVICE_DISABLED`)
+
+Testlar (lokal):
+- `python -m pytest packages/contracts -q` → 53 passed [SIM]
+- `cd services/backend && TEST_POSTGRES_URL=... python3.10 -m pytest -q` → 204 passed [SIM] (SQLite + PostgreSQL 16)
+- Xuddi shu Python 3.12 da → 204 passed [SIM]
+- Faza talab qilgan testlar:
+  - to'liq sikl `queued → sent → acked → confirmed`;
+  - buyruq ikki marta olinmaydi;
+  - muddati o'tadi va hech qachon yetkazilmaydi;
+  - PIN'siz darvoza → 403;
+  - guest va viewer → 403;
+  - noto'g'ri params → 422;
+  - offline Hub → 503, buyruq yaratilmaydi;
+  - imzo vektorlari;
+  - boshqa uyning Hub'i ack qila olmaydi.
+
+Hal qilinmagan xavflar:
+- Hub buyruqni imzosi bo'yicha tekshirishi Faza 4 da yoziladi. Hozir buni faqat testlar tekshiradi.
+- Float qiymatli parametrlarning kanonik ko'rinishi Python `json` ga bog'liq. Hub ham Python bo'lgani uchun mos keladi. Boshqa tilda (masalan, ESP32) imzo tekshirilsa, float'lar ehtiyotkorlik talab qiladi; hozircha imzoni faqat Hub tekshiradi.
+- 1 s polling'da `last_seen` faqat 5 s da bir marta yoziladi (DB yozuvlarini kamaytirish uchun).
+
+Keyingi faza: 4 — Home Hub + simulyator.

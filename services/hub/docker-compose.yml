@@ -1,0 +1,47 @@
+# Home Hub stack. Build context is the repo root (contracts are shared).
+#   cp .env.example .env   # fill in values
+#   sh mosquitto/make-passwd.sh garden_lights main_meter ...   (device keys)
+#   docker compose up -d                    # broker + gateway
+#   docker compose --profile sim up -d      # + simulator (no real devices)
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: always
+    ports:
+      - "1883:1883"   # LAN only. Never forward this port on the router.
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto-data:/mosquitto/data
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: services/hub/Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      DB_PATH: /data/hub.sqlite3
+    volumes:
+      - hub-data:/data
+    depends_on:
+      - mosquitto
+
+  simulator:
+    profiles: ["sim"]
+    build:
+      context: ../..
+      dockerfile: services/hub/Dockerfile
+    restart: always
+    command: ["python", "-m", "simulator", "/app/simulator/devices.example.json"]
+    environment:
+      MQTT_HOST: mosquitto
+      SIM_DEVICE_PASSWORD: ${SIM_DEVICE_PASSWORD:?set SIM_DEVICE_PASSWORD in .env}
+    depends_on:
+      - mosquitto
+
+volumes:
+  mosquitto-data:
+  hub-data:

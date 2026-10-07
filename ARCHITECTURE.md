@@ -202,14 +202,15 @@ Hub tekshiradi: imzo to'g'ri, muddati o'tmagan, `command_id` avval bajarilmagan,
 
 ## 5. MQTT topiklari
 
-**Lokal (Hub ↔ ESP32):**
+**Lokal (Hub ↔ ESP32):** (`{device_key}` — qurilmaning uy ichidagi `key` i; ESP32 MQTT login'i ham shu)
 ```
-home/{device_id}/state          (retained)  — joriy holat
-home/{device_id}/telemetry                  — o'lchovlar
-home/{device_id}/availability   (retained, LWT) — online/offline
-home/{device_id}/cmd                        — buyruq (faqat gateway yozadi)
-home/{device_id}/ack                        — buyruq natijasi
+home/{device_key}/state          (retained)  — qurilmaning TO'LIQ joriy holati (retained bo'lgani uchun qisman xabar boshqa capability'larni o'chiradi)
+home/{device_key}/telemetry                  — o'lchovlar (qisman bo'lishi mumkin)
+home/{device_key}/availability   (retained, LWT) — online/offline
+home/{device_key}/cmd                        — buyruq (faqat gateway yozadi)
+home/{device_key}/ack                        — buyruq natijasi
 ```
+Xabar formatlari: `packages/contracts/schemas/local-mqtt.schema.json`. Qurilma xom qiymat yuboradi; `source/quality/ts` ni gateway qo'shadi.
 
 **Cloud broker (Hub ↔ Backend ↔ PWA):**
 ```

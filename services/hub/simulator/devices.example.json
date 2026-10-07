@@ -1,0 +1,10 @@
+[
+  {"type": "light", "key": "garden_lights"},
+  {"type": "power_meter", "key": "main_meter", "measures_frequency": true},
+  {"type": "environment", "key": "living_temp"},
+  {"type": "motion", "key": "garden_radar"},
+  {"type": "gate", "key": "front_gate", "travel_time_s": 15},
+  {"type": "ir_climate", "key": "ac_bedroom"},
+  {"type": "valve", "key": "garden_valve", "max_runtime_s": 1800},
+  {"type": "leak", "key": "kitchen_leak"}
+]

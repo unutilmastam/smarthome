@@ -9,7 +9,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 1 | Poydevor (monorepo, contracts, CI) | tugadi, CI yashil |
 | 2 | Backend asosi (auth, uy, xona, qurilma reyestri) | tugadi, CI yashil |
 | 3 | Buyruqlar (imzo, hayot sikli, Hub API) | tugadi `[SIM]` |
-| 4 | Home Hub + simulyator | boshlanmagan |
+| 4 | Home Hub + simulyator | tugadi `[SIM]` (Docker image build sinalmagan) |
+| 5 | Real-time (managed MQTT) | boshlanmagan |
 
 ---
 
@@ -227,3 +228,80 @@ Hal qilinmagan xavflar:
 - 1 s polling'da `last_seen` faqat 5 s da bir marta yoziladi (DB yozuvlarini kamaytirish uchun).
 
 Keyingi faza: 4 — Home Hub + simulyator.
+
+---
+
+## Faza 4 — Home Hub + simulyator — 2026-10-07
+Holat: tugadi `[SIM]`. Istisno: `docker compose up` haqiqatan ishga tushirilmagan — muhitda Docker daemon yo'q. Faqat `docker compose config` tekshirildi (pastga qarang).
+
+Qilingan ishlar:
+- `services/hub/gateway` (asyncio). Sikllar:
+  - heartbeat (30 s, sog'liq ma'lumoti bilan);
+  - `GET /hub/commands` polling (1,5 s; xatoda exponential backoff, 60 s gacha);
+  - config yangilash (oxirgi config SQLite'da saqlanadi, shuning uchun Hub internetsiz ham ishga tushadi);
+  - lokal MQTT tinglovchi (uzilsa qayta ulanadi);
+  - outbox flush;
+  - har 60 s da to'liq holat hisoboti.
+- Buyruq tekshiruvi (`gateway/verifier.py`), tartib ADR 0004 bo'yicha: konvert sxemasi → imzo → muddat (±5 s soat farqi) → replay (`command_id` SQLite'ga bajarishdan **oldin** yoziladi va qayta ishga tushirishdan keyin ham saqlanadi) → qurilma (`device_id` va `device_key` mos bo'lishi shart) → params → rol (`roles.json`) → lokal xavfsizlik qoidalari (o'chirilgan qurilma, LWT offline, `duration_s` > `max_runtime_s`). Tekshiruvdan o'tmagan buyruq **hech qachon** qurilmaga yetmaydi; backend'ga `rejected` + sabab yuboriladi.
+- Tasdiq (`gateway/expectations.py`): `confirmed` faqat buyruq yuborilgandan **keyin** kelgan `reported` holat kutilgan qiymatga teng bo'lsa beriladi. `confirm_attribute` bor capability'larda (cover, lock, contactor, valve) holat vaqtida o'zgarmasa → `failed: no_feedback`. IR konditsioner (`assumed`) hech qachon `confirmed` bo'lmaydi va `acked` da qoladi. Qurilma ack bermasa → `failed: device_offline`.
+- Offline bufer: ack'lar va holat hisobotlari SQLite outbox'ga yoziladi va internet qaytganda tartib bilan yuboriladi. Backend doimiy rad etgan (4xx) xabar navbatni to'sib qo'ymasligi uchun tashlab yuboriladi va log'ga yoziladi.
+- Gateway qurilmadan kelgan qiymatlarni contracts bo'yicha tekshiradi; noto'g'ri qiymat backend'ga yuborilmaydi.
+- `services/hub/simulator` (paho-mqtt). Har bir virtual qurilma o'z MQTT login'i va LWT'si bilan ulanadi:
+  - chiroq (switch + dimmer);
+  - PZEM (power_meter, Gauss shovqini; energiya faqat o'sadi);
+  - harorat sensori;
+  - harakat sensori;
+  - darvoza (harakat vaqti sozlanadi, standart 15 s; `open`/`closed` faqat gerkon simulyatsiyasi bilan);
+  - IR konditsioner (`assumed`; xona harorati `reported`);
+  - sug'orish klapani (`max_runtime_s` **simulyator ichida majburiy**, ya'ni proshivka darajasida; Hub va internet yo'qolsa ham taymer klapanni yopadi);
+  - suv oqishi sensori.
+  
+  Nosozlik rejimlari: `offline` (MQTT v5 "disconnect with will" → broker LWT yuboradi), `unresponsive`, `bad_values`, `stuck`.
+- Lokal MQTT shartnomasi: `packages/contracts/schemas/local-mqtt.schema.json`, ARCHITECTURE 5 yangilandi (`{device_key}`, retained `state` qurilmaning to'liq holatini olib yuradi).
+- `packages/contracts/roles.json`: rol matritsasi endi yagona manbada. Backend testi `permissions.py` shu fayl bilan bir xilligini tekshiradi; Hub uni bevosita o'qiydi.
+- Mosquitto: `allow_anonymous false`, parol fayli, ACL. Gateway butun `home/#` ga kira oladi; qurilma (login = `device_key`) faqat o'z `state/telemetry/availability/ack` topiklariga yoza oladi va faqat o'z `cmd` topikini o'qiy oladi. `make-passwd.sh` parollarni `.env` dan oladi.
+- `services/hub/docker-compose.yml` (mosquitto, gateway, `sim` profili bilan simulator) va `Dockerfile` (root bo'lmagan foydalanuvchi bilan).
+- CI'ga `hub` job qo'shildi: Python 3.10/3.12, apt orqali mosquitto, testlar va `docker compose config`.
+
+Testlar paytida topilgan va tuzatilgan haqiqiy xatolar:
+1. Simulyatorda chiroq `switch` va `dimmer` holatini bitta retained topikka alohida xabar qilib yozgan; oxirgisi birinchisini o'chirib yuborgan. Tuzatildi: retained `state` doim qurilmaning to'liq holati. Bu qoida shartnoma tavsifiga va ARCHITECTURE 5 ga yozildi.
+2. Contracts'da o'lchovlar uchun fizik chegaralar yo'q edi: -9999 V "to'g'ri" deb o'tib ketgan. Qo'shildi: kuchlanish 0–500 V, tok 0–1000 A, quvvat ±1 MW, energiya ≥ 0, chastota 40–70 Hz, harorat −60…100 °C, namlik 0–100 %, oqim ≥ 0. Shu chegaralarni tekshiruvchi test ham qo'shildi.
+3. Integratsion testda darvoza 1 s da ochilib bo'lgani uchun test aynan `acked` holatini ba'zan ushlay olmagan. Test qayta yozildi: endi voqealar vaqti bo'yicha `confirmed` ack'dan kamida bir harakat vaqti keyin kelganini tekshiradi. Shundan keyin 10/10 va to'liq to'plam 6/6 marta o'tdi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `services/hub/gateway/{config,contracts,signing,timeutil,store,backend,verifier,expectations,core,__main__}.py`
+- `services/hub/simulator/{devices,__main__}.py`, `simulator/devices.example.json`
+- `services/hub/mosquitto/{mosquitto.conf,acl,make-passwd.sh}`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `requirements*.txt`, `pyproject.toml`, `README.md`, `.gitignore`
+- `services/hub/tests/{conftest,test_units,test_broker_acl,test_integration}.py`
+- `packages/contracts/{roles.json,schemas/local-mqtt.schema.json,capabilities.json}`, contracts testlari
+- `services/backend/tests/test_roles.py`, `ARCHITECTURE.md` (5-bo'lim), `.github/workflows/test.yml`
+
+Testlar (lokal, haqiqiy Mosquitto 2.0.18 bilan):
+- `cd services/hub && python3.10 -m pytest -q` → 25 passed [SIM]; Python 3.12 → 25 passed [SIM]
+  - unit: imzo vektorlari (backend bilan bir xil), har bir rad etish sababi, Hub qayta ishga tushgandan keyin ham replay rad etilishi, kutilmalar, outbox tartibi;
+  - broker: anonim va noto'g'ri parol rad etiladi; qurilma boshqa qurilma `cmd`/`state` topikiga yoza olmaydi va faqat o'z `cmd` ini oladi;
+  - to'liq zanjir (backend + gateway + broker + simulyator bitta jarayonda):
+    - chiroq `queued → sent → acked → confirmed`, holat backend'da `reported/good`;
+    - darvoza faqat gerkon bilan tasdiqlanadi, tiqilib qolsa → `no_feedback`;
+    - IR → `acked` + `assumed`;
+    - javob bermaydigan qurilma → `device_offline`;
+    - LWT → backend'da `offline`, keyingi buyruq 409;
+    - replay va soxta imzoli konvert → qurilmaga yetmaydi;
+    - **internet uzilganda klapan o'zi yopiladi**, holat buferda yig'iladi va ulanish qaytganda backend'ga yetadi;
+    - muddati o'tgan buyruq internet qaytgandan keyin ham bajarilmaydi;
+    - hisoblagich telemetriyasi `not_supported` bilan, noto'g'ri qiymatlar backend'ga yetmaydi.
+- Integratsion to'plam ketma-ket 6 marta → har safar 9/9.
+- `cd services/backend && python -m pytest -q` (SQLite + PostgreSQL) → 205 passed [SIM]
+- `python -m pytest packages/contracts -q` → 57 passed
+- `docker compose --profile sim config -q` → OK. **Image build va `docker compose up` sinalmagan** (Docker daemon yo'q).
+
+Hal qilinmagan xavflar:
+- ESP32 ↔ Mosquitto ulanishi TLS'siz (LAN). Threat model T6 dagi qolgan xavf.
+- Simulyator va ESP32'lar uchun parollar `make-passwd.sh` orqali yaratiladi. Real qurilmalar uchun har birida alohida parol majburiy (`DEVICE_PASSWORD_<KEY>`); `SIM_DEVICE_PASSWORD` faqat simulyator uchun.
+- Gateway buyruqni bajarish vaqtida config'ni keshdan oladi. Qurilma backend'da o'chirilgan bo'lsa-yu, Hub config'ni hali yangilamagan bo'lsa (≤ 60 s), backend baribir buyruq yaratmaydi, shuning uchun xavf past.
+- Hub'ning `local-api` va `hub.local` PWA'si hali yo'q (Faza 6 va keyingi fazalar).
+
+Tasdiqlanmagan taxminlar:
+- Hub apparati (N100 yoki Pi 5) noma'lum (H-02). Kod `python:3.12-slim` ustida ishlaydi; u amd64 va arm64 uchun mavjud, lekin arm64'da sinalmagan.
+
+Keyingi faza: 5 — Real-time (managed MQTT).

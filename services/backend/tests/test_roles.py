@@ -110,3 +110,11 @@ def test_any_user_can_create_own_home_and_becomes_owner(outsider):
     assert r.json()["data"]["my_role"] == "owner"
     homes = outsider.get("/api/v1/homes").json()
     assert homes["meta"]["total"] == 2
+
+
+def test_matrix_matches_contracts_roles_json(settings):
+    import json
+    roles = json.loads((settings.contracts_dir / "roles.json").read_text())
+    assert {r: set(p) for r, p in roles["roles"].items()} == \
+        {r: set(p) for r, p in ROLE_PERMISSIONS.items()}
+    assert tuple(roles["permissions"]) == PERMISSIONS

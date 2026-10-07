@@ -72,12 +72,12 @@
       "permission": "view",
       "risk": "low",
       "attributes": {
-        "voltage": { "type": "number", "unit": "V" },
-        "current": { "type": "number", "unit": "A" },
-        "power": { "type": "number", "unit": "W" },
-        "energy": { "type": "number", "unit": "kWh" },
+        "voltage": { "type": "number", "minimum": 0, "maximum": 500, "unit": "V" },
+        "current": { "type": "number", "minimum": 0, "maximum": 1000, "unit": "A" },
+        "power": { "type": "number", "minimum": -1000000, "maximum": 1000000, "unit": "W", "description": "Active power. Negative = export (bidirectional meters only)." },
+        "energy": { "type": "number", "minimum": 0, "unit": "kWh" },
         "power_factor": { "type": "number", "minimum": 0, "maximum": 1 },
-        "frequency": { "type": "number", "unit": "Hz" }
+        "frequency": { "type": "number", "minimum": 40, "maximum": 70, "unit": "Hz" }
       },
       "actions": {}
     },
@@ -101,11 +101,11 @@
       "risk": "low",
       "attributes": {
         "power": { "type": "boolean" },
-        "current_temp": { "type": "number", "unit": "°C" },
+        "current_temp": { "type": "number", "minimum": -60, "maximum": 100, "unit": "°C" },
         "target_temp": { "type": "number", "minimum": 16, "maximum": 30, "unit": "°C" },
         "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] },
         "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] },
-        "humidity": { "type": "number", "unit": "%" }
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
       },
       "actions": {
         "set_power": {
@@ -178,7 +178,7 @@
       "permission": "view",
       "risk": "low",
       "attributes": {
-        "temperature": { "type": "number", "unit": "°C" },
+        "temperature": { "type": "number", "minimum": -60, "maximum": 100, "unit": "°C" },
         "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" },
         "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
       },
@@ -197,7 +197,7 @@
       "risk": "medium",
       "attributes": {
         "open": { "type": "boolean" },
-        "flow": { "type": "number", "unit": "L/min" },
+        "flow": { "type": "number", "minimum": 0, "unit": "L/min" },
         "remaining_s": { "type": "integer", "minimum": 0, "unit": "s" }
       },
       "actions": {

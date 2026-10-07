@@ -118,14 +118,14 @@ Tugash mezoni: testlar o'tadi `[SIM]`.
 **Maqsad:** haqiqiy Hub dasturi virtual qurilmalarni boshqaradi; backend bilan to'liq zanjir ishlaydi.
 
 Vazifalar:
-- [ ] `services/hub/gateway`: asyncio; backend'ga heartbeat (30 s), `GET /hub/commands` polling (1–2 s, xatoda exponential backoff), imzo + muddat + takror `command_id` tekshiruvi (SQLite'da bajarilganlar ro'yxati), lokal MQTT'ga uzatish, ack qaytarish.
-- [ ] Imzosiz / muddati o'tgan / takror buyruq → `rejected` + sabab. **Hech qachon bajarilmaydi.**
-- [ ] `confirm_attribute` bor capability'larda (`cover`, `lock`, `contactor`, `valve`) `confirmed` faqat qurilma holati haqiqatan o'zgarganda; belgilangan vaqtda o'zgarmasa → `failed: no_feedback`.
-- [ ] `services/hub/simulator`: lokal MQTT'da virtual qurilmalar — chiroq (switch+dimmer), PZEM (power_meter, realistik shovqin), harorat sensori, harakat sensori, darvoza (ochilish 15 s, gerkon), IR konditsioner (`assumed`), sug'orish klapani (**`max_runtime` simulyator ichida majburiy**), suv oqishi sensori. Nosozlik rejimlari: qurilma uziladi, javob bermaydi, noto'g'ri qiymat.
-- [ ] Lokal MQTT topiklari ARCHITECTURE 5-bo'lim; LWT → availability.
-- [ ] Offline bufer: backend yo'q paytda holatlar SQLite'da yig'iladi, ulanish qaytsa yuboriladi; eskirgan buyruqlar bajarilmaydi.
-- [ ] `services/hub/docker-compose.yml`: mosquitto (ACL, anonim o'chiq), gateway, simulator. `docker compose up` bilan ishga tushadi.
-- [ ] Integratsion test: backend + hub + simulyator bir jarayonda (yoki compose) — telefon o'rniga test mijozi chiroqni yoqadi, holat `confirmed`.
+- [x] `services/hub/gateway`: asyncio; backend'ga heartbeat (30 s), `GET /hub/commands` polling (1–2 s, xatoda exponential backoff), imzo + muddat + takror `command_id` tekshiruvi (SQLite'da bajarilganlar ro'yxati), lokal MQTT'ga uzatish, ack qaytarish.
+- [x] Imzosiz / muddati o'tgan / takror buyruq → `rejected` + sabab. **Hech qachon bajarilmaydi.**
+- [x] `confirm_attribute` bor capability'larda (`cover`, `lock`, `contactor`, `valve`) `confirmed` faqat qurilma holati haqiqatan o'zgarganda; belgilangan vaqtda o'zgarmasa → `failed: no_feedback`.
+- [x] `services/hub/simulator`: lokal MQTT'da virtual qurilmalar — chiroq (switch+dimmer), PZEM (power_meter, realistik shovqin), harorat sensori, harakat sensori, darvoza (ochilish 15 s, gerkon), IR konditsioner (`assumed`), sug'orish klapani (**`max_runtime` simulyator ichida majburiy**), suv oqishi sensori. Nosozlik rejimlari: qurilma uziladi, javob bermaydi, noto'g'ri qiymat.
+- [x] Lokal MQTT topiklari ARCHITECTURE 5-bo'lim; LWT → availability.
+- [x] Offline bufer: backend yo'q paytda holatlar SQLite'da yig'iladi, ulanish qaytsa yuboriladi; eskirgan buyruqlar bajarilmaydi.
+- [x] `services/hub/docker-compose.yml`: mosquitto (ACL, anonim o'chiq), gateway, simulator. `docker compose up` bilan ishga tushadi.
+- [x] Integratsion test: backend + hub + simulyator bir jarayonda (yoki compose) — telefon o'rniga test mijozi chiroqni yoqadi, holat `confirmed`.
 
 Testlar: imzo vektorlari (backend bilan bir xil), replay rad etilishi, internet uzilishi stsenariysi, klapan internet yo'qda ham o'chishi.
 Tugash mezoni: to'liq zanjir `[SIM]` da ishlaydi.

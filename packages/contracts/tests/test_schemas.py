@@ -11,6 +11,7 @@ EXPECTED = {
     "ack.schema.json",
     "state-report.schema.json",
     "capabilities.schema.json",
+    "local-mqtt.schema.json",
 }
 
 UUID1 = "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f"
@@ -175,3 +176,22 @@ def test_report_rejects_bad_availability(validator_for):
     doc = report()
     doc["devices"][1]["availability"] = "maybe"
     assert not validator_for("state-report.schema.json").is_valid(doc)
+
+
+def test_local_mqtt_defs(validator_for):
+    from jsonschema import Draft202012Validator
+    from conftest import all_schemas
+    schema = all_schemas()["local-mqtt.schema.json"]
+    Draft202012Validator.check_schema(schema)
+    fc = Draft202012Validator.FORMAT_CHECKER
+
+    def v(name):
+        return Draft202012Validator({**schema["$defs"][name], "$defs": schema["$defs"]},
+                                    format_checker=fc)
+    v("cmd").validate({"schema": 1, "command_id": UUID1, "capability": "switch",
+                       "action": "turn_on", "params": {}})
+    v("ack").validate({"schema": 1, "command_id": UUID1, "status": "acked"})
+    v("state").validate({"schema": 1, "states": {"switch": {"on": True}}, "source": "reported"})
+    assert not v("ack").is_valid({"schema": 1, "command_id": UUID1, "status": "confirmed"})
+    assert not v("cmd").is_valid({"schema": 1, "command_id": "x", "capability": "switch",
+                                  "action": "turn_on", "params": {}})

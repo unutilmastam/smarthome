@@ -64,3 +64,28 @@ def test_valve_open_requires_bounded_duration(capabilities):
 def test_sensors_have_no_actions(capabilities):
     for name in ("power_meter", "contact", "motion", "environment", "leak"):
         assert capabilities["capabilities"][name]["actions"] == {}, name
+
+
+def test_roles_matrix_is_consistent(capabilities):
+    from conftest import CONTRACTS_DIR, load_json
+    roles = load_json(CONTRACTS_DIR / "roles.json")
+    perms = set(roles["permissions"])
+    assert perms == PERMISSIONS
+    assert set(roles["roles"]) == {"owner", "admin", "family", "guest", "viewer"}
+    for role, granted in roles["roles"].items():
+        assert set(granted) <= perms, role
+    assert set(roles["roles"]["owner"]) == perms
+    assert "manage_users" not in roles["roles"]["admin"]
+    for cap in capabilities["capabilities"].values():
+        assert cap["permission"] in perms
+
+
+def test_measurements_have_physical_bounds(capabilities):
+    """Sensor garbage (e.g. -9999 V) must fail validation instead of reaching the UI."""
+    caps = capabilities["capabilities"]
+    for cap, attr in [("power_meter", "voltage"), ("power_meter", "current"),
+                      ("power_meter", "frequency"), ("power_meter", "power"),
+                      ("environment", "temperature"), ("climate", "current_temp")]:
+        spec = caps[cap]["attributes"][attr]
+        assert "minimum" in spec and "maximum" in spec, f"{cap}.{attr}"
+    assert caps["power_meter"]["attributes"]["energy"]["minimum"] == 0

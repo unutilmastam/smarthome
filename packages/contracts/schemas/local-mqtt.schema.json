@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/local-mqtt.schema.json",
+  "title": "Local MQTT messages, Hub <-> devices (ARCHITECTURE 5)",
+  "description": "Topics: home/{device_key}/cmd (gateway only), home/{device_key}/ack, home/{device_key}/state (retained), home/{device_key}/telemetry, home/{device_key}/availability (retained, LWT, plain text 'online'/'offline'). Devices send raw values; the gateway adds source/quality/ts trust metadata.",
+  "$defs": {
+    "cmd": {
+      "type": "object",
+      "required": ["schema", "command_id", "capability", "action", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": 1 },
+        "command_id": { "type": "string", "format": "uuid" },
+        "capability": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "action": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "params": { "type": "object" }
+      }
+    },
+    "ack": {
+      "type": "object",
+      "required": ["schema", "command_id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": 1 },
+        "command_id": { "type": "string", "format": "uuid" },
+        "status": { "enum": ["acked", "rejected", "failed"] },
+        "reason": { "type": "string", "maxLength": 32 },
+        "detail": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "state": {
+      "description": "Used for both state and telemetry. home/{key}/state is RETAINED, so it must always carry the FULL current state of every capability of the device (a partial message would erase the rest). Telemetry may be partial. 'source' is 'assumed' for devices without feedback (IR); one message has one source.",
+      "type": "object",
+      "required": ["schema", "states"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": 1 },
+        "ts": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "source": { "enum": ["reported", "assumed"] },
+        "states": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+          }
+        }
+      }
+    }
+  }
+}

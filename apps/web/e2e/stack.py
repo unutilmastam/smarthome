@@ -35,9 +35,11 @@ def free_port():
         return s.getsockname()[1]
 
 
-def wait_port(port, timeout=20):
+def wait_port(port, timeout=20, proc=None):
     end = time.time() + timeout
     while time.time() < end:
+        if proc is not None and proc.poll() is not None:
+            raise RuntimeError(f"{proc.args} exited with {proc.returncode} before port {port} opened")
         try:
             socket.create_connection(("127.0.0.1", port), 0.3).close()
             return
@@ -81,8 +83,8 @@ def main():
     conf.write_text(f"listener {mport} 127.0.0.1\nallow_anonymous false\npassword_file {passwd}\n"
                     f"acl_file {HUB / 'mosquitto' / 'acl'}\npersistence false\n"
                     + (f"user {pwd.getpwuid(os.geteuid()).pw_name}\n" if os.geteuid() == 0 else ""))
-    start([shutil.which("mosquitto") or "/usr/sbin/mosquitto", "-c", str(conf)])
-    wait_port(mport)
+    broker = start([shutil.which("mosquitto") or "/usr/sbin/mosquitto", "-c", str(conf)])
+    wait_port(mport, proc=broker)
 
     # 2. Backend DB + seed (owner, home, hub, devices).
     db_url = f"sqlite:///{tmp / 'backend.db'}"
@@ -96,9 +98,9 @@ def main():
     hub_token, signing_key = seed.split()
 
     # 3. Backend API.
-    start([PY, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(PORT),
-           "--log-level", "warning"], env=benv, cwd=BACKEND)
-    wait_port(PORT)
+    api = start([PY, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(PORT),
+                 "--log-level", "warning"], env=benv, cwd=BACKEND)
+    wait_port(PORT, proc=api)
 
     # 4. Simulated devices and the hub gateway.
     sim = tmp / "devices.json"
@@ -147,4 +149,13 @@ print(token, derive_home_key(s.signing_master_key, home.id).hex())
 """
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as exc:
+        if not isinstance(exc, SystemExit):
+            print(f"stack failed: {exc!r}", file=sys.stderr, flush=True)
+        # Never leave children (mosquitto, uvicorn, ...) running and holding the pipes.
+        for p in procs:
+            if p.poll() is None:
+                p.kill()
+        raise

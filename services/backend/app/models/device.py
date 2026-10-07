@@ -109,5 +109,10 @@ class Camera(UUIDPk, Timestamps, Base):
     room_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid, ForeignKey("rooms.id", ondelete="SET NULL")
     )
+    # Status (stream/recording/disk) lives on a linked device with the "camera" capability.
+    device_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("devices.id", ondelete="CASCADE"), unique=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     frigate_name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (UniqueConstraint("home_id", "frigate_name", name="uq_cameras_home_frigate"),)

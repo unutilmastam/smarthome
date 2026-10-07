@@ -31,9 +31,13 @@ export function useCommand(deviceId: string) {
   const qc = useQueryClient();
   const [tracked, setTracked] = useState<Tracked | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every send() starts a new generation; late responses for an older command are dropped
+  // so they can never overwrite the status of the command the user just sent.
+  const generation = useRef(0);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  const follow = useCallback((cmd: Command, started: number) => {
+  const follow = useCallback((cmd: Command, started: number, gen: number) => {
+    if (gen !== generation.current) return;
     const done = TERMINAL.includes(cmd.status) ||
       (cmd.status === "acked" && !hasFeedback(cmd.capability)) ||
       Date.now() - started > MAX_TRACK_MS;
@@ -45,14 +49,15 @@ export function useCommand(deviceId: string) {
       return;
     }
     timer.current = setTimeout(async () => {
-      try { follow(await api.get<Command>(`/commands/${cmd.id}`), started); }
-      catch { timer.current = setTimeout(() => follow(cmd, started), POLL_MS * 2); }
+      try { follow(await api.get<Command>(`/commands/${cmd.id}`), started, gen); }
+      catch { timer.current = setTimeout(() => follow(cmd, started, gen), POLL_MS * 2); }
     }, POLL_MS);
   }, [deviceId, qc]);
 
   const send = useCallback(async (capability: string, action: string,
     params: Record<string, unknown> = {}, confirmPin?: string) => {
     if (timer.current) clearTimeout(timer.current);
+    const gen = ++generation.current;
     setTracked({ capability, action, status: "sending" });
     try {
       const body: Record<string, unknown> = {
@@ -60,11 +65,11 @@ export function useCommand(deviceId: string) {
       };
       if (confirmPin) body.confirm_pin = confirmPin;
       const cmd = await api.post<Command>("/commands", body);
-      follow(cmd, Date.now());
+      follow(cmd, Date.now(), gen);
       return cmd;
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError(0, "NETWORK", String(e));
-      setTracked({ capability, action, status: "error", error: err });
+      if (gen === generation.current) setTracked({ capability, action, status: "error", error: err });
       throw err;
     }
   }, [deviceId, follow]);

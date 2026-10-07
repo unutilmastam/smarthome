@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     # acked but never confirmed (confirm_attribute capabilities) -> timeout
     command_confirm_timeout_s: int = 60
     command_rate_limit_per_min: int = 60
+    # Login attempts per IP per 5 minutes (Faza 2). Raised only for local e2e runs.
+    login_ip_limit: int = 20
     # Real-time (ADR 0008). "none" = polling only.
     realtime_provider: str = "none"
     emqx_api_base: Optional[str] = None

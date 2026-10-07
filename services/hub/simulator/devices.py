@@ -58,6 +58,7 @@ class SimDevice:
             c.username_pw_set(self.username, self.password)
         c.will_set(self.topic("availability"), "offline", qos=1, retain=True)
         c.on_connect = self._on_connect
+        c.on_subscribe = self._on_subscribe
         c.on_message = self._on_message
         c.on_disconnect = lambda *a, **k: self.connected.clear()
         self.client = c
@@ -74,6 +75,10 @@ class SimDevice:
         if reason_code.is_failure:
             return
         client.subscribe(self.topic("cmd"), qos=1)
+
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
+        # Only "online" once the broker confirmed the cmd subscription (SUBACK);
+        # otherwise a command sent in that gap would be lost (seen on slow CI runners).
         client.publish(self.topic("availability"), "online", qos=1, retain=True)
         self.connected.set()
         self.on_online()

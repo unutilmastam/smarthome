@@ -36,6 +36,8 @@ def hub_view(hub: Hub, settings: Settings) -> dict:
         "online": hub_is_online(hub, settings),
         "last_seen": iso(hub.last_seen),
         "version": hub.version,
+        "tailnet_host": hub.tailnet_host,
+        "lan_host": hub.lan_host,
         "created_at": iso(hub.created_at),
         "revoked_at": iso(hub.revoked_at),
     }

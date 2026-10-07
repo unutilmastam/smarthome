@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
+from pydantic import Field
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from sqlalchemy import select
@@ -56,6 +57,10 @@ class HeartbeatIn(Model):
     version: Optional[str] = None
     hub_time: Optional[str] = None
     health: Optional[dict] = None
+    # Where the user's phone can reach the hub (never used by the cloud itself).
+    tailnet_host: Optional[str] = Field(default=None, max_length=253,
+                                        pattern=r"^[A-Za-z0-9.\-]+$")
+    lan_host: Optional[str] = Field(default=None, max_length=253, pattern=r"^[A-Za-z0-9.\-]+$")
 
 
 @router.post("/heartbeat")
@@ -64,6 +69,10 @@ def heartbeat(body: HeartbeatIn, hub: Hub = Depends(get_hub), db: Session = Depe
     hub.last_seen = now
     if body.version and body.version != hub.version:
         hub.version = body.version[:40]
+    if body.tailnet_host is not None:
+        hub.tailnet_host = body.tailnet_host or None
+    if body.lan_host is not None:
+        hub.lan_host = body.lan_host or None
     db.commit()
     return ok({"server_time": iso(now), "hub_id": str(hub.id)})
 

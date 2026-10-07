@@ -40,6 +40,7 @@ export function Layout() {
             <NavLink to="/rooms">{t("nav.rooms")}</NavLink>
             <NavLink to="/devices">{t("nav.devices")}</NavLink>
             <NavLink to="/energy">{t("nav.energy")}</NavLink>
+            <NavLink to="/cameras">{t("nav.cameras")}</NavLink>
             <NavLink to="/hub">{t("nav.hub")}</NavLink>
             <NavLink to="/settings">{t("nav.settings")}</NavLink>
             {can(home?.my_role, "manage_users") && <NavLink to="/members">{t("nav.members")}</NavLink>}

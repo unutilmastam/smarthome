@@ -54,13 +54,16 @@ input, select {
 }
 input[type="range"] { padding: 0; border: 0; background: transparent; }
 label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
-.app { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr; }
+/* minmax(0, 1fr): grid children default to min-width:auto, so a long nav would widen
+   the whole page on phones (layout viewport grows, buttons end up off-screen). */
+.app { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr; grid-template-columns: minmax(0, 1fr); }
+.app > * { min-width: 0; }
 .topbar {
   display: flex; align-items: center; gap: var(--gap); padding: 10px var(--pad);
   padding-top: max(10px, env(safe-area-inset-top)); background: var(--surface);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5;
 }
-.topbar h1 { font-size: 18px; margin: 0; flex: 1; }
+.topbar h1 { font-size: 18px; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav { display: flex; gap: 4px; overflow-x: auto; padding: 8px var(--pad); background: var(--surface); border-bottom: 1px solid var(--border); }
 .nav a { padding: 8px 12px; border-radius: 999px; text-decoration: none; color: var(--muted); white-space: nowrap; }
 .nav a.active { background: var(--surface-2); color: var(--text); font-weight: 600; }

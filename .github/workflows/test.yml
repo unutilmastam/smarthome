@@ -114,6 +114,14 @@ jobs:
         run: npx vitest run
       - name: Build
         run: npx vite build
+      - name: Release has no secrets and no video (ADR 0006)
+        working-directory: .
+        run: |
+          sh infra/cpanel/build_release.sh /tmp/release
+          cd services/backend
+          export ENV=development DATABASE_URL=sqlite:////tmp/nv.db
+          python -m alembic upgrade head
+          python -m app.jobs.no_video_check /tmp/release
       - name: E2E (Playwright, phone + iPad, full stack [SIM])
         run: npx playwright test
         env:

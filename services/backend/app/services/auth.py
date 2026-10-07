@@ -25,7 +25,6 @@ from app.services import audit, rate_limit
 
 MAX_FAILED_LOGINS = 5
 LOCK_DURATION = timedelta(minutes=5)
-LOGIN_IP_LIMIT = 20
 LOGIN_IP_WINDOW_S = 300
 
 
@@ -50,7 +49,7 @@ def user_out(user: User) -> dict:
 
 def login(db: Session, settings: Settings, email: str, password: str,
           ip: Optional[str], user_agent: Optional[str]) -> dict:
-    rate_limit.hit(db, f"login:ip:{ip or 'unknown'}", LOGIN_IP_LIMIT, LOGIN_IP_WINDOW_S)
+    rate_limit.hit(db, f"login:ip:{ip or 'unknown'}", settings.login_ip_limit, LOGIN_IP_WINDOW_S)
 
     user = db.scalar(select(User).where(User.email == email))
     now = utcnow()

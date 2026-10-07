@@ -207,10 +207,10 @@ Tugash mezoni: o'lchov haqiqiy hisoblagich bilan solishtirilgan `[REAL]`.
 
 ## Faza 10 — Kameralar (lokal)
 
-- [ ] Frigate + go2rtc Hub'da; HDD; retention; 85% disk ogohlantirishi.
-- [ ] Kameralar alohida VLAN, internetga chiqish yopiq.
-- [ ] Cloud: faqat metadata va `GET /cameras/{id}/access` (Tailscale/lokal URL, ruxsat tekshiruvi bilan).
-- [ ] Test: internet o'chiq paytda yozuv davom etadi; cloud DB va hosting fayllarida video yo'qligi tekshiriladi.
+- [~] Frigate + go2rtc Hub'da (compose + config namunasi; apparatda sinalmagan); HDD; retention; 85% disk ogohlantirishi.
+- [~] Kameralar alohida VLAN (install.md; router noma'lum H-07), internetga chiqish yopiq.
+- [x] Cloud: faqat metadata va `GET /cameras/{id}/access` (Tailscale/lokal URL, ruxsat tekshiruvi bilan).
+- [~] Test: cloud DB va hosting fayllarida video yo'qligi — `no_video_check` (bajarildi); internet o'chiq paytda yozuv — `[REAL]` kerak.
 
 ---
 

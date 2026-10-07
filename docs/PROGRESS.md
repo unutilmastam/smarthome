@@ -15,7 +15,8 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 7 | cPanel'ga deploy | qisman: hamma narsa tayyor va lokal sinaldi; **haqiqiy hostingga deploy qilinmagan** (SSH kaliti va GitHub Secrets egasida) |
 | 8 | Birinchi real qurilma (ESP32 rele) | qisman: proshivka, o'rnatish yo'riqnomasi va UI tayyor; **apparatda sinalmagan** (`[REAL]` jadval bo'sh) |
 | 9 | Elektr monitoring | qisman: `[SIM]` tugadi; haqiqiy hisoblagich bilan solishtirilmagan (`[REAL]` yo'q) |
-| 10 | Kameralar | boshlanmagan |
+| 10 | Kameralar (lokal) | qisman: bulut tomoni va Hub monitoringi `[SIM]`; Frigate va kameralar apparatda sinalmagan |
+| 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | boshlanmagan |
 
 ---
 
@@ -577,3 +578,54 @@ Hal qilinmagan xavflar:
 - Soatlik cron hostingda hali sozlanmagan (Faza 7 deploy'dan keyin).
 
 Keyingi faza: 10 — Kameralar (lokal).
+
+---
+
+## Faza 10 — Kameralar (lokal) — 2026-10-07
+Holat: **qisman**. Bulut tomoni, Hub'dagi Frigate monitoringi va "videosiz bulut" tekshiruvi tayyor. Frigate'ning o'zi, kameralar, HDD va VLAN apparatda **sinalmagan** (H-03, H-07). "Internet o'chiq paytda yozuv davom etadi" testi **bajarilmagan** — Frigate apparati kerak.
+
+Qilingan ishlar:
+- Migratsiya `0004`:
+  - `cameras.device_id`: kamera holati `camera` capability'li qurilma orqali (contracts'dagi `stream_available`, `recording`, `disk_usage_pct`);
+  - `hubs.tailnet_host` va `hubs.lan_host`: Hub'ning o'zi heartbeat'da yuboradi.
+- API:
+  - `GET/POST /homes/{id}/cameras` va `DELETE /cameras/{id}` (`configure`);
+  - `GET /cameras/{id}/access` — `camera_live` ruxsati bilan faqat **havolalar** qaytaradi (Tailscale va LAN, Frigate'ning login talab qiladigan porti 8971). Har bir kirish audit'ga yoziladi. Family uchun standart holatda 403 (ARCHITECTURE 9: "sozlanadi").
+- Bulut videoni hech qachon saqlamaydi, proxy qilmaydi va relay qilmaydi (ADR 0006). Avtomatik tekshiruvlar:
+  - testlar: DB sxemasida binary ustun yo'q va video/snapshot/clip/image nomli ustun yo'q; API faqat `application/json` qabul qiladi (fayl yuklash endpoint'i yo'q);
+  - `python -m app.jobs.no_video_check [papkalar]`: **jonli DB** (bytea/blob ustunlar) va **hosting fayllari** (kengaytma va fayl signaturasi bo'yicha, nomi o'zgartirilgan fayllar ham) tekshiriladi. CI'da release'ga qarshi va deploy'dan keyin serverning o'zida ishlaydi.
+- Hub:
+  - `gateway/frigate.py`: Frigate API'dan faqat `/api/stats` va `/api/config` o'qiladi (media yo'q);
+  - stats bo'lmasa `stream_available` noma'lum qoladi, ya'ni taxmin qilinmaydi;
+  - disk ≥ 85% → log va `health.disk_warning`;
+  - Frigate ishlamasa kameralar availability'si `unknown`;
+  - heartbeat'da `tailnet_host` va `lan_host` yuboriladi.
+- `docker-compose.yml` ga Frigate qo'shildi (`cameras` profili). Image `ghcr.io/blakeblackshear/frigate:0.18.0` — teg registry'da **tekshirildi**; ESPHome `2026.9.1` tegi ham tekshirildi. Konfiguratsiya namunasi `frigate/config.example.yml`: auth yoqilgan, RTSP sirlari env'dan olinadi, kameralar alohida VLAN'da.
+- PWA "Kameralar" sahifasi:
+  - holat belgilari;
+  - disk ≥ 85% ogohlantirishi;
+  - "Jonli ko'rish" → Hub'dagi Frigate'ga havola (sahifada `<video>` yoki `<img>` **yo'q**);
+  - ruxsat bo'lmasa tugma ko'rsatilmaydi;
+  - kamera qo'shish.
+
+Faza 9 CI'sida topilgan va shu fazada tuzatilgan xatolar (run #7):
+1. **Telefonda gorizontal overflow** (haqiqiy UI xatosi). `.app` CSS grid'ida bolalar `min-width:auto` bo'lgani uchun nav (yangi "Elektr" va "Kameralar" bilan) butun sahifani 763 px'ga kengaytirgan. Telefonda sahifa kichraygan, tugmalar ekrandan chiqib ketgan. Tuzatildi (`minmax(0,1fr)`) va regressiya testi qo'shildi: telefon va iPad'da 8 ta sahifada gorizontal overflow yo'q.
+2. **PIN dialogidagi race**: dialog ochilgandan keyin, paint'dan so'ng ishlaydigan effekt PIN'ni tozalagan — tez kiritilgan PIN o'chib ketgan, iPad'da "Tasdiqlash" faol bo'lmagan. Tuzatildi: PIN dialog yopilganda tozalanadi.
+3. **Buyruq kuzatuvidagi race**: eski buyruqning kechikkan javobi yangi buyruq holatining ustiga yozilishi mumkin edi. Tuzatildi (generation hisoblagichi). Test tuzatishsiz yiqiladi, tuzatish bilan o'tadi.
+4. **Simulyator**: qurilma SUBACK'dan oldin "online" deb hisoblangan. Sekin CI'da birinchi buyruq yo'qolishi mumkin edi. `hub 3.10` dagi IR test xatosining ehtimoliy sababi shu: lokal 15/15 o'tdi, qayta hosil qilinmadi. Endi `wait_status` xato bo'lganda buyruqning holati va voqealarini chiqaradi.
+5. E2E ko'p marta login qilgani uchun o'zimizning **login limitiga** (IP bo'yicha 20/5 daq) tushgan — himoya ishlayapti. Limit sozlanadigan qilindi (`LOGIN_IP_LIMIT`) va faqat E2E stack'da oshirildi.
+- Avvalgi (Faza 6) bitta noma'lum E2E xatosi va CI'dagi telefondagi xato, katta ehtimol bilan, 1 va 2-xatolar edi.
+
+Testlar (lokal):
+- backend → 271 passed (SQLite + PostgreSQL), shu jumladan 15 ta kamera testi.
+- hub → 36 passed (Python 3.10 va 3.12) [SIM]: Frigate holati bulutga yetadi; Frigate o'chsa `unknown`; disk ogohlantirishi; Frigate'dan faqat holat endpoint'lari o'qiladi; kamera havolalari heartbeat'dagi manzillardan tuziladi.
+- web → vitest 30 passed; Playwright: to'liq to'plam 4 marta takrorlandi → **24/24** (telefon + iPad, layout testi bilan).
+- `no_video_check`: PostgreSQL sxemasi va release fayllari → `NO VIDEO: OK`.
+
+Hal qilinmagan xavflar:
+- Frigate, kameralar, HDD retention va internet o'chiq paytdagi yozuv — `[REAL]` emas.
+- PWA'dagi havola Frigate UI'ning bosh sahifasini ochadi; kameraning to'g'ridan-to'g'ri deep-link formati sinalmagan.
+- Telefonda kamerani ko'rish uchun Tailscale ilovasi yoqilgan bo'lishi shart.
+- Family uchun `camera_live` sozlamasi (har bir a'zoga alohida) hali yo'q.
+
+Keyingi faza: 11 — Darvoza, konditsioner, xavfsizlik, sug'orish.

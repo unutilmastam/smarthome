@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useSession } from "./auth/session";
 import { Layout } from "./components/Layout";
+import { Cameras } from "./pages/Cameras";
 import { Dashboard } from "./pages/Dashboard";
 import { DeviceDetail } from "./pages/DeviceDetail";
 import { Devices } from "./pages/Devices";
@@ -28,6 +29,7 @@ export function App() {
           <Route path="devices" element={<Devices />} />
           <Route path="devices/:id" element={<DeviceDetail />} />
           <Route path="energy" element={<Energy />} />
+          <Route path="cameras" element={<Cameras />} />
           <Route path="hub" element={<HubStatus />} />
           <Route path="settings" element={<Settings />} />
           <Route path="members" element={<Members />} />

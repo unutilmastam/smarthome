@@ -88,7 +88,10 @@ def main():
 
     # 2. Backend DB + seed (owner, home, hub, devices).
     db_url = f"sqlite:///{tmp / 'backend.db'}"
+    # LOGIN_IP_LIMIT: every e2e test logs in from 127.0.0.1; the real limit (20/5 min)
+    # would lock the suite out (it did — the protection works).
     benv = {"ENV": "development", "DATABASE_URL": db_url, "COOKIE_SECURE": "false",
+            "LOGIN_IP_LIMIT": "1000",
             "JWT_SECRET": "e2e-only-jwt-0123456789abcdef0123456789",
             "SIGNING_MASTER_KEY": "e2e-only-signing-0123456789abcdef01234567"}
     subprocess.run([PY, "-m", "alembic", "upgrade", "head"], cwd=BACKEND, env={**os.environ, **benv},

@@ -16,6 +16,7 @@ from gateway.backend import BackendClient, BackendError
 from gateway.config import GatewaySettings
 from gateway.contracts import Contracts
 from gateway.expectations import expectation
+from gateway.frigate import DISK_WARNING_PCT, FrigateError, FrigateMonitor
 from gateway.store import Store
 from gateway.telemetry import RAW_RETENTION, Aggregator
 from gateway.timeutil import iso, parse_ts, utcnow
@@ -58,6 +59,10 @@ class Gateway:
         self.cloud_connected = asyncio.Event()
         self.cloud_dirty: Set[str] = set()
         self.aggregator = Aggregator(self.store)
+        self.frigate: Optional[FrigateMonitor] = (
+            FrigateMonitor(settings.frigate_url) if settings.frigate_url else None)
+        self.frigate_ok: Optional[bool] = None
+        self.disk_usage_pct: Optional[float] = None
         self._tasks: list = []
         self._stop = asyncio.Event()
 
@@ -66,7 +71,7 @@ class Gateway:
         self._tasks = [asyncio.create_task(c) for c in (
             self._mqtt_loop(), self._heartbeat_loop(), self._config_loop(),
             self._poll_loop(), self._flush_loop(), self._full_report_loop(),
-            self._cloud_loop(), self._cloud_publish_loop())]
+            self._cloud_loop(), self._cloud_publish_loop(), self._frigate_loop())]
         await self._stop.wait()
 
     async def stop(self) -> None:
@@ -98,6 +103,10 @@ class Gateway:
     def health(self) -> dict:
         avail = self.store.availability()
         return {"mqtt_connected": self.mqtt_connected.is_set(),
+                "frigate_ok": self.frigate_ok,
+                "disk_usage_pct": self.disk_usage_pct,
+                "disk_warning": self.disk_usage_pct is not None
+                and self.disk_usage_pct >= DISK_WARNING_PCT,
                 "outbox": self.store.outbox_size(),
                 "devices_online": sum(1 for v in avail.values() if v == "online"),
                 "devices_known": len(self.devices)}
@@ -105,7 +114,8 @@ class Gateway:
     async def _heartbeat_loop(self) -> None:
         while True:
             try:
-                await self.backend.heartbeat(self.s.version, self.health())
+                await self.backend.heartbeat(self.s.version, self.health(),
+                                             self.s.tailnet_host, self.s.lan_host)
                 self.backend_ok = True
             except BackendError as exc:
                 self.backend_ok = False
@@ -497,3 +507,51 @@ class Gateway:
             except aiomqtt.MqttError as exc:
                 self.cloud_dirty |= keys
                 log.warning("cloud publish failed: %s", exc)
+
+    # ---- cameras (Frigate status only, ADR 0006) ---------------------------------------
+    def apply_frigate(self, snap: Optional[dict]) -> None:
+        """Write camera status as reported state; Frigate down -> availability unknown."""
+        cams = {k: d for k, d in self.devices.items() if d.get("adapter") == "frigate"}
+        if snap is None:
+            for key in cams:
+                self.store.set_availability(key, "unknown")
+                self.dirty_availability.add(key)
+            return
+        self.disk_usage_pct = snap["disk_usage_pct"]
+        if self.disk_usage_pct is not None and self.disk_usage_pct >= DISK_WARNING_PCT:
+            log.warning("recordings disk at %.1f%% (>= %.0f%%)", self.disk_usage_pct,
+                        DISK_WARNING_PCT)
+        now = iso(utcnow())
+        for key in cams:
+            name = key[len("cam_"):] if key.startswith("cam_") else key
+            cam = snap["cameras"].get(name)
+            if cam is None:
+                self.store.set_availability(key, "unknown")
+                self.dirty_availability.add(key)
+                continue
+            status = "online" if cam["stream_available"] else "offline"
+            self.store.set_availability(key, status)
+            self.dirty_availability.add(key)
+            values = {"recording": cam["recording"]}
+            if cam["stream_available"] is not None:
+                values["stream_available"] = cam["stream_available"]
+            if snap["disk_usage_pct"] is not None:
+                values["disk_usage_pct"] = snap["disk_usage_pct"]
+            for attr, val in values.items():
+                self.store.put_state(key, "camera", attr, val, "reported", now)
+                self.dirty.setdefault(key, set()).add(("camera", attr))
+            self.cloud_dirty.add(key)
+
+    async def _frigate_loop(self) -> None:
+        if self.frigate is None:
+            return
+        while True:
+            try:
+                snap = await self.frigate.snapshot()
+                self.frigate_ok = True
+            except FrigateError as exc:
+                log.warning("frigate: %s", exc)
+                self.frigate_ok = False
+                snap = None
+            self.apply_frigate(snap)
+            await asyncio.sleep(self.s.frigate_poll_s)

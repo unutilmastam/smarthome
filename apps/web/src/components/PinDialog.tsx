@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 /** Asks for the PIN before a high-risk action (ARCHITECTURE 9). The PIN is never stored. */
@@ -8,11 +8,14 @@ export function PinDialog({ open, action, onSubmit, onCancel }: {
   const { t } = useTranslation();
   const [pin, setPin] = useState("");
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  // Layout effect: the dialog is shown before paint. The PIN is cleared on close, so
+  // nothing can wipe digits typed right after it opens (race found by Playwright in CI).
+  useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) { setPin(""); d.showModal?.() ?? d.setAttribute("open", ""); }
+    if (open && !d.open) { d.showModal?.() ?? d.setAttribute("open", ""); }
     if (!open && d.open) { d.close?.() ?? d.removeAttribute("open"); }
+    if (!open) setPin("");
   }, [open]);
   if (!open) return <dialog ref={ref} />;
   const valid = /^\d{4,8}$/.test(pin);

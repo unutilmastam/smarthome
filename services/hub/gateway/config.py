@@ -31,6 +31,13 @@ class GatewaySettings(BaseSettings):
     cloud_mqtt_username: Optional[str] = None
     cloud_mqtt_password: Optional[str] = None
 
+    # Frigate NVR on the hub (Faza 10). Empty = no cameras.
+    frigate_url: Optional[str] = None
+    frigate_poll_s: float = 30.0
+    # How the user's phone reaches the hub (sent in the heartbeat, used for camera links).
+    tailnet_host: Optional[str] = None
+    lan_host: Optional[str] = "hub.local"
+
     db_path: str = "hub.sqlite3"
     contracts_dir: Optional[Path] = None
 

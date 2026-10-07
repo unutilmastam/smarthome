@@ -72,11 +72,13 @@ jobs:
           PORT: ${{ secrets.CPANEL_SSH_PORT }}
           USER: ${{ secrets.CPANEL_SSH_USER }}
           APP: ${{ vars.CPANEL_APP_DIR }}
+          WEB: ${{ vars.CPANEL_WEB_DIR }}
           VENV: ${{ vars.CPANEL_VENV_ACTIVATE }}
         run: |
           ssh -i ~/.ssh/id_deploy -p ${PORT:-22} -o StrictHostKeyChecking=yes "$USER@$HOST" \
             "set -e; cd '$APP'; . '$VENV'; pip install -q -r requirements.txt; \
-             python -m alembic upgrade head; mkdir -p tmp; touch tmp/restart.txt"
+             python -m alembic upgrade head; mkdir -p tmp; touch tmp/restart.txt; \
+             python -m app.jobs.no_video_check \"\$HOME/$APP\" \"\$HOME/$WEB\""
       - name: Health check
         env:
           URL: ${{ vars.PUBLIC_URL }}

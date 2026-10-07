@@ -21,6 +21,10 @@ class Hub(UUIDPk, Timestamps, Base):
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     last_seen: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
     version: Mapped[Optional[str]] = mapped_column(String(40))
+    # Reported by the hub itself (heartbeat). Used only to build local/Tailscale links;
+    # the cloud never connects to these addresses.
+    tailnet_host: Mapped[Optional[str]] = mapped_column(String(253))
+    lan_host: Mapped[Optional[str]] = mapped_column(String(253))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
 
     __table_args__ = (

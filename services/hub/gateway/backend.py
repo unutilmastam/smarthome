@@ -37,8 +37,14 @@ class BackendClient:
                                r.status_code)
         return r.json()
 
-    async def heartbeat(self, version: str, health: dict) -> dict:
-        return await self._call("POST", "/heartbeat", json={"version": version, "health": health})
+    async def heartbeat(self, version: str, health: dict, tailnet_host: Optional[str] = None,
+                        lan_host: Optional[str] = None) -> dict:
+        body = {"version": version, "health": health}
+        if tailnet_host is not None:
+            body["tailnet_host"] = tailnet_host
+        if lan_host is not None:
+            body["lan_host"] = lan_host
+        return await self._call("POST", "/heartbeat", json=body)
 
     async def commands(self) -> List[dict]:
         return (await self._call("GET", "/commands"))["data"]

@@ -28,6 +28,11 @@ test("login → turn on the garden light → confirmed by the device", async ({ 
 });
 
 test("gate asks for PIN and is confirmed by the reed switch", async ({ page }) => {
+  page.on("response", async (r) => {
+    if (r.url().includes("/api/v1/commands")) {
+      try { const b = await r.json(); console.log("CMD", r.request().method(), r.status(), JSON.stringify({ id: b.data?.id, s: b.data?.status, c: b.data?.created_at, a: b.data?.action, e: b.error?.code })); } catch { /* ignore */ }
+    }
+  });
   const card = page.getByTestId("device-front_gate");
   await expect(card.getByTestId("value-Holat")).toContainText("Tasdiqlangan", { timeout: 20_000 });
   await card.getByRole("button", { name: "Ochish" }).click();

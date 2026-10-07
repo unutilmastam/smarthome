@@ -147,8 +147,19 @@ class Stack:
 
     async def wait_status(self, cid, statuses, timeout=10.0):
         statuses = set(statuses)
-        return await self.wait(lambda: (lambda c: c if c["status"] in statuses else None)(
-            self.command(cid)), f"command {cid} in {statuses}", timeout)
+        last = {}
+
+        def check():
+            c = self.command(cid)
+            last["c"] = c
+            return c if c["status"] in statuses else None
+        try:
+            return await self.wait(check, f"command {cid} in {statuses}", timeout)
+        except AssertionError:
+            c = last.get("c") or {}
+            raise AssertionError(
+                f"command {cid} not in {statuses}: status={c.get('status')} "
+                f"reason={c.get('reason')} events={[(e['status'], e['detail']) for e in c.get('events', [])]}")
 
     def device(self, key):
         return self.phone.get(f"/api/v1/devices/{self.ids[key]}").json()["data"]

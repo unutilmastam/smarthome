@@ -125,3 +125,38 @@ describe("IR climate", () => {
     expect(screen.getByText(/IR qurilma/)).toBeInTheDocument();
   });
 });
+
+describe("command tracking race", () => {
+  it("a late response for an older command never overwrites the newer one", async () => {
+    setMe(true);
+    let releaseOld: (() => void) | null = null;
+    let c1Polls = 0;
+    let posts = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = String(input);
+      const json = (data: unknown) => new Response(JSON.stringify({ data, error: null, meta: {} }), { status: 200 });
+      if (url.endsWith("/commands") && init.method === "POST") {
+        posts += 1;
+        return json({ id: `c${posts}`, capability: "switch", action: posts === 1 ? "turn_on" : "turn_off", status: "queued", reason: null });
+      }
+      if (url.endsWith("/commands/c1")) {
+        c1Polls += 1;
+        if (c1Polls === 1) return json({ id: "c1", capability: "switch", action: "turn_on", status: "acked", reason: null });
+        await new Promise<void>((r) => { releaseOld = r; });   // this poll is slow
+        return json({ id: "c1", capability: "switch", action: "turn_on", status: "timeout", reason: "no_feedback" });
+      }
+      if (url.endsWith("/commands/c2")) return json({ id: "c2", capability: "switch", action: "turn_off", status: "confirmed", reason: null });
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+    const d = device({ switch: cap("control_basic", "low", { on: v(false) }) });
+    renderWithProviders(<DeviceControls device={d} role="owner" />);
+    await userEvent.click(screen.getByRole("button", { name: "Yoqish" }));
+    // c1 is "acked" (not busy) and its next poll is hanging: the user sends c2.
+    await waitFor(() => expect(releaseOld).not.toBeNull(), { timeout: 3000 });
+    await userEvent.click(screen.getByRole("button", { name: "O'chirish" }));
+    await waitFor(() => expect(screen.getByTestId("command-status")).toHaveAttribute("data-status", "confirmed"), { timeout: 3000 });
+    releaseOld!();
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(screen.getByTestId("command-status")).toHaveAttribute("data-status", "confirmed");
+  }, 10_000);
+});

@@ -4,6 +4,9 @@ import type { CapabilityView, Device, Role, Value } from "../api/types";
 import { useCommand } from "../lib/commands";
 import { CAPABILITIES, can, hasFeedback } from "../lib/contracts";
 import { useSession } from "../auth/session";
+import { useDevices } from "../api/hooks";
+import { useCurrentHome } from "../lib/home";
+import { formatValue } from "../lib/status";
 import { CommandStatus } from "./CommandStatus";
 import { Icon } from "./Icon";
 import { PinDialog } from "./PinDialog";
@@ -52,7 +55,7 @@ function SwitchCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const v = view.attributes.on;
   return (
     <div className="sw-line">
-      <ValueView label={attrLabel(t, "on")} value={v} pending={pending} big />
+      <ValueView attr="on" label={attrLabel(t, "on")} value={v} pending={pending} big />
       <PowerSwitch on={reportedBool(v)} label={t("cap.switch")} pending={pending} disabled={disabled}
         onTurnOn={() => send(cap, "turn_on")} onTurnOff={() => send(cap, "turn_off")} />
     </div>
@@ -66,7 +69,7 @@ function DimmerCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const [draft, setDraft] = useState<number>(known);
   return (
     <>
-      <ValueView label={attrLabel(t, "brightness")} value={current} pending={pending} />
+      <ValueView attr="brightness" label={attrLabel(t, "brightness")} value={current} pending={pending} />
       <div className="row">
         <input type="range" min={0} max={100} value={draft} aria-label={t("attr.brightness")}
           onChange={(e) => setDraft(Number(e.target.value))} style={{ flex: 1 }} disabled={disabled} />
@@ -84,10 +87,10 @@ function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const base = typeof target?.value === "number" ? (target.value as number) : 24;
   return (
     <>
-      <ValueView label={attrLabel(t, "current_temp")} value={view.attributes.current_temp} big />
-      <ValueView label={attrLabel(t, "power")} value={view.attributes.power} pending={pending} />
-      <ValueView label={attrLabel(t, "target_temp")} value={target} />
-      <ValueView label={attrLabel(t, "mode")} value={view.attributes.mode} />
+      <ValueView attr="current_temp" label={attrLabel(t, "current_temp")} value={view.attributes.current_temp} big />
+      <ValueView attr="power" label={attrLabel(t, "power")} value={view.attributes.power} pending={pending} />
+      <ValueView attr="target_temp" label={attrLabel(t, "target_temp")} value={target} />
+      <ValueView attr="mode" label={attrLabel(t, "mode")} value={view.attributes.mode} />
       <p className="muted" style={{ margin: 0 }}>{t("control.assumedNote")}</p>
       <div className="sw-line">
         <span className="muted">{t("attr.power")}</span>
@@ -125,7 +128,7 @@ function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & 
   return (
     <>
       {Object.keys(view.attributes).map((a) => (
-        <ValueView key={a} label={attrLabel(t, a)} value={view.attributes[a]}
+        <ValueView key={a} attr={a} label={attrLabel(t, a)} value={view.attributes[a]}
           pending={pending && a === confirmAttr} big={a === confirmAttr} />
       ))}
       {cap === "contactor" && <p className="muted" style={{ margin: 0 }}>{t("control.auxNote")}</p>}
@@ -148,9 +151,9 @@ function ValveCtl({ cap, view, send, disabled, pending }: CtlProps) {
   const valid = minutes !== "" && Number.isInteger(m) && m >= 1 && m <= maxMin;
   return (
     <>
-      <ValueView label={attrLabel(t, "open")} value={view.attributes.open} pending={pending} big />
-      <ValueView label={attrLabel(t, "flow")} value={view.attributes.flow} />
-      <ValueView label={attrLabel(t, "remaining_s")} value={view.attributes.remaining_s} />
+      <ValueView attr="open" label={attrLabel(t, "open")} value={view.attributes.open} pending={pending} big />
+      <ValueView attr="flow" label={attrLabel(t, "flow")} value={view.attributes.flow} />
+      <ValueView attr="remaining_s" label={attrLabel(t, "remaining_s")} value={view.attributes.remaining_s} />
       <label>{t("control.durationMin")}
         <input type="number" inputMode="numeric" min={1} max={maxMin} value={minutes}
           onChange={(e) => setMinutes(e.target.value)} disabled={disabled} />
@@ -166,9 +169,39 @@ function ValveCtl({ cap, view, send, disabled, pending }: CtlProps) {
   );
 }
 
+/** Security system on the hub (ADR 0012). Every action is high risk -> PIN. */
+function AlarmCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  const { home } = useCurrentHome();
+  const devices = useDevices(home?.id, true);
+  const st = view.attributes.state;
+  const known = !!st && (st.quality === "good" || st.quality === "stale") && typeof st.value === "string";
+  const state = known ? String(st!.value) : "unknown";
+  const zoneKey = typeof view.attributes.alert_zone?.value === "string" ? String(view.attributes.alert_zone.value) : "";
+  const zone = zoneKey && ((devices.data ?? []).find((d) => d.key === zoneKey)?.name ?? zoneKey);
+  return (
+    <>
+      <div className="alarm-ring" data-state={state} data-pending={pending} data-testid="alarm-state">
+        <span className="ring"><Icon name={state === "disarmed" ? "unlock" : "shield"} size={38} /></span>
+        <strong>{formatValue(st, t, "alarm_state")}</strong>
+        {zone && ["pending", "triggered"].includes(state) && <span className="zone">{t("alarm.zone", { zone })}</span>}
+      </div>
+      <ValueView attr="alarm_state" label={attrLabel(t, "state")} value={st} pending={pending} />
+      <div className="seg alarm-actions">
+        <button className={state === "armed_away" ? "primary" : ""} disabled={disabled} onClick={() => send(cap, "arm_away")}>
+          <Icon name="lock" size={18} /> {t("action.arm_away")}</button>
+        <button className={state === "armed_home" ? "primary" : ""} disabled={disabled} onClick={() => send(cap, "arm_home")}>
+          <Icon name="home" size={18} /> {t("action.arm_home")}</button>
+        <button className={state !== "disarmed" && state !== "unknown" ? "danger" : ""} disabled={disabled} onClick={() => send(cap, "disarm")}>
+          <Icon name="unlock" size={18} /> {t("action.disarm")}</button>
+      </div>
+    </>
+  );
+}
+
 function ReadOnlyCtl({ view }: CtlProps) {
   const { t } = useTranslation();
-  return <>{Object.keys(view.attributes).map((a) => <ValueView key={a} label={attrLabel(t, a)} value={view.attributes[a]} />)}</>;
+  return <>{Object.keys(view.attributes).map((a) => <ValueView key={a} attr={a} label={attrLabel(t, a)} value={view.attributes[a]} />)}</>;
 }
 
 const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
@@ -179,6 +212,7 @@ const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
   cover: (p) => <ButtonsCtl {...p} actions={["open", "stop", "close"]} />,
   lock: (p) => <ButtonsCtl {...p} actions={["unlock", "lock"]} />,
   contactor: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
+  alarm: AlarmCtl,
 };
 
 export function DeviceControls({ device, role, compact = false }: { device: Device; role?: Role; compact?: boolean }) {

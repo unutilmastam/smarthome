@@ -1,6 +1,7 @@
 from app.models.audit import AuditLog
 from app.models.auth import AuthSession, RateLimitHit
 from app.models.command import Command, CommandEvent
+from app.models.event import Event
 from app.models.device import Camera, Device, DeviceCapability, DeviceState
 from app.models.home import Floor, Home, HomeMember, Room
 from app.models.hub import Hub
@@ -17,6 +18,7 @@ __all__ = [
     "Device",
     "DeviceCapability",
     "DeviceState",
+    "Event",
     "Floor",
     "Home",
     "HomeMember",

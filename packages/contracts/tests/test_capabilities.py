@@ -45,14 +45,14 @@ def test_confirm_attribute_exists(capabilities):
             assert cap["confirm_attribute"] in cap["attributes"], name
 
 
-@pytest.mark.parametrize("name", ["cover", "lock", "contactor", "valve"])
+@pytest.mark.parametrize("name", ["cover", "lock", "contactor", "valve", "alarm"])
 def test_physical_actuators_require_feedback(capabilities, name):
     assert "confirm_attribute" in capabilities["capabilities"][name]
 
 
 def test_high_risk_capabilities(capabilities):
     high = {n for n, c in items(capabilities) if c["risk"] == "high"}
-    assert {"cover", "lock", "contactor"} <= high
+    assert {"cover", "lock", "contactor", "alarm"} <= high
 
 
 def test_valve_open_requires_bounded_duration(capabilities):
@@ -89,3 +89,33 @@ def test_measurements_have_physical_bounds(capabilities):
         spec = caps[cap]["attributes"][attr]
         assert "minimum" in spec and "maximum" in spec, f"{cap}.{attr}"
     assert caps["power_meter"]["attributes"]["energy"]["minimum"] == 0
+
+
+def test_capability_config_and_events_are_valid(capabilities):
+    for name, cap in items(capabilities):
+        if "config" in cap:
+            Draft202012Validator.check_schema(cap["config"])
+            assert cap["config"].get("type") == "object", name
+            assert cap["config"].get("additionalProperties") is False, name
+        for ev, spec in cap.get("events", {}).items():
+            assert spec["severity"] in ("info", "warning", "critical"), f"{name}.{ev}"
+
+
+def test_alarm_config_requires_zones(capabilities):
+    cfg = Draft202012Validator(capabilities["capabilities"]["alarm"]["config"])
+    zone = {"device_key": "front_door", "capability": "contact", "mode": "entry"}
+    assert cfg.is_valid({"zones": [zone], "sirens": ["siren"], "exit_delay_s": 30})
+    assert not cfg.is_valid({})
+    assert not cfg.is_valid({"zones": []})
+    assert not cfg.is_valid({"zones": [{**zone, "capability": "switch"}]})
+    assert not cfg.is_valid({"zones": [zone], "exit_delay_s": 3600})
+
+
+def test_feedback_attributes_exist(capabilities):
+    c = capabilities["capabilities"]
+    assert c["cover"]["attributes"]["obstructed"]["type"] == "boolean"
+    assert c["climate"]["attributes"]["running"]["type"] == "boolean"
+    assert "flow" in c["valve"]["attributes"]
+    # A gate left open and a triggered alarm must be reportable.
+    assert c["cover"]["events"]["left_open"]["severity"] == "warning"
+    assert c["alarm"]["events"]["triggered"]["severity"] == "critical"

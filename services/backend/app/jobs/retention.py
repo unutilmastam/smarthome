@@ -2,6 +2,7 @@
 
 - rate limit counters older than 1 day
 - auth sessions revoked or expired more than 30 days ago
+- events older than 180 days (ADR 0012)
 Audit log and command history are kept (append-only by design).
 """
 
@@ -13,7 +14,7 @@ from sqlalchemy import delete, or_
 from app.db.types import utcnow
 from app.jobs._runner import job
 from app.models import AuthSession
-from app.services import telemetry
+from app.services import events, telemetry
 from app.services.rate_limit import purge_old
 
 
@@ -22,7 +23,8 @@ def run(db) -> dict:
     sessions = db.execute(delete(AuthSession).where(or_(
         AuthSession.revoked_at < cutoff, AuthSession.expires_at < cutoff))).rowcount or 0
     db.commit()
-    return {"rate_limits": purge_old(db), "auth_sessions": sessions, **telemetry.purge(db)}
+    return {"rate_limits": purge_old(db), "auth_sessions": sessions, "events": events.purge(db),
+            **telemetry.purge(db)}
 
 
 if __name__ == "__main__":

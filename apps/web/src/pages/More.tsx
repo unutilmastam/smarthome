@@ -8,6 +8,8 @@ export function More() {
   const { t } = useTranslation();
   const { home } = useCurrentHome();
   const items = [
+    { to: "/security", icon: "shield", label: t("nav.security"), tone: "tone-alert" },
+    { to: "/events", icon: "bell", label: t("nav.events"), tone: "tone-light" },
     { to: "/cameras", icon: "camera", label: t("nav.cameras"), tone: "tone-camera" },
     { to: "/hub", icon: "hub", label: t("nav.hub"), tone: "tone-power" },
     { to: "/settings", icon: "settings", label: t("nav.settings"), tone: "tone-neutral" },

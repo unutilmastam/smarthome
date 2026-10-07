@@ -7,6 +7,8 @@ firmware must enforce (valve max_runtime) are enforced HERE, not by the gateway.
 Fault modes: "offline" (connection dropped -> broker publishes LWT),
 "unresponsive" (connected, ignores commands), "bad_values" (publishes values
 outside the contract), "stuck" (accepts commands, physical state never changes).
+Device-specific faults (Phase 11): gate "reed_conflict", climate "ir_blocked",
+valve "no_water" / "leaking". Events go to home/{key}/event (ADR 0012).
 """
 
 import json
@@ -129,6 +131,14 @@ class SimDevice:
             elif isinstance(v, (int, float)):
                 values[k] = -9999
         return values
+
+    def publish_event(self, type_: str, data: Optional[dict] = None) -> None:
+        if self.client is None:
+            return
+        msg = {"schema": 1, "ts": now_iso(), "type": type_}
+        if data:
+            msg["data"] = data
+        self.client.publish(self.topic("event"), json.dumps(msg), qos=1)
 
     def ack(self, cid: str, status: str = "acked", reason: Optional[str] = None,
             detail: Optional[str] = None) -> None:
@@ -283,19 +293,50 @@ class LeakSim(SimDevice):
 
 
 class GateSim(SimDevice):
-    """Gate: motor travel + reed switches. 'open'/'closed' only when the reed says so."""
+    """Gate: motor travel + reed switches. 'open'/'closed' only when the reed says so.
+
+    Like the firmware (devices/esphome/gate.yaml): a photocell interruption while closing
+    makes the gate controller stop and reopen (hardware); 'close' is refused while the beam
+    is interrupted; both reeds active ("reed_conflict") -> state unknown, commands refused;
+    no end reed within 2 x travel time -> 'stopped' + cover.travel_timeout."""
     capabilities = ("cover",)
 
-    def __init__(self, key, travel_time_s: float = 15.0, **kw):
+    def __init__(self, key, travel_time_s: float = 15.0, photocell: bool = True, **kw):
         super().__init__(key, **kw)
         self.travel = travel_time_s
+        self.photocell = photocell
         self._move: Optional[threading.Thread] = None
         self._abort = threading.Event()
 
     def on_online(self):
         with self.lock:
-            st = self.state.get("cover", {"position": 0, "state": "closed"})
-        self.set_and_publish("cover", dict(st))
+            st = dict(self.state.get("cover", {"position": 0, "state": "closed"}))
+        if self.photocell:
+            st.setdefault("obstructed", False)
+        self.set_and_publish("cover", st)
+
+    def set_fault(self, fault):
+        super().set_fault(fault)
+        if fault == "reed_conflict":
+            self._abort.set()
+            self.set_and_publish("cover", {"state": "unknown"})
+            self.publish_event("cover.sensor_conflict")
+
+    def set_obstructed(self, blocked: bool):
+        """Someone/something is in the photocell beam."""
+        self.set_and_publish("cover", {"obstructed": blocked})
+        if not blocked:
+            return
+        self.publish_event("cover.obstructed")
+        with self.lock:
+            closing = self.state.get("cover", {}).get("state") == "closing"
+        if closing:  # the gate controller (hardware) stops and reopens by itself
+            self._abort.set()
+            if self._move and self._move.is_alive():
+                self._move.join(2)
+            self._abort = threading.Event()
+            self._move = threading.Thread(target=self._run, args=(100,), daemon=True)
+            self._move.start()
 
     def _run(self, target: int):
         with self.lock:
@@ -307,17 +348,37 @@ class GateSim(SimDevice):
             if self._abort.wait(self.travel / steps):
                 with self.lock:
                     p = self.state["cover"]["position"]
-                self.set_and_publish("cover", {"state": "stopped", "position": p})
+                    st = self.state["cover"].get("state")
+                if st != "unknown":
+                    self.set_and_publish("cover", {"state": "stopped", "position": p})
                 return
             if self.fault == "stuck":
                 continue  # motor runs, gate does not move, reed never closes
             pos = max(0, min(100, pos + (10 if target > pos else -10)))
             self.set_and_publish("cover", {"position": pos, "state": moving})
-        if self.fault != "stuck":
-            self.set_and_publish("cover", {"state": "open" if target == 100 else "closed",
-                                           "position": target})
+        if self.fault == "stuck":
+            # Firmware: end reed not reached within max travel time.
+            if not self._abort.wait(self.travel):
+                self.set_and_publish("cover", {"state": "stopped"})
+                self.publish_event("cover.travel_timeout", {"target": "open" if target else "closed"})
+            return
+        self.set_and_publish("cover", {"state": "open" if target == 100 else "closed",
+                                       "position": target})
+
+    def _refuse(self, cid) -> bool:
+        if self.fault == "reed_conflict":
+            self.ack(cid, "rejected", "safety_rule", "reed sensor conflict")
+            return True
+        return False
 
     def _start(self, cid, target):
+        if self._refuse(cid):
+            return
+        with self.lock:
+            blocked = self.state.get("cover", {}).get("obstructed") is True
+        if target == 0 and blocked:
+            self.ack(cid, "rejected", "safety_rule", "photocell interrupted")
+            return
         self.ack(cid)
         self._abort.set()
         if self._move and self._move.is_alive():
@@ -333,22 +394,50 @@ class GateSim(SimDevice):
         self._start(cid, 0)
 
     def do_cover_stop(self, cid, p):
+        if self._refuse(cid):
+            return
         self.ack(cid)
         self._abort.set()
 
 
 class IRClimateSim(SimDevice):
     """IR air conditioner: no feedback. Commanded values are published as 'assumed';
-    only the room temperature sensor is 'reported'."""
+    only the room temperature sensor and (if fitted) the current sensor are 'reported'.
+
+    current_sensor=True: a CT clamp on the unit's supply reports climate.running
+    (ADR 0012). Fault "ir_blocked": the IR code never reaches the unit (nothing runs,
+    the room does not cool) - exactly the case 'assumed' can not see."""
     capabilities = ("climate",)
 
-    def __init__(self, key, room_temp: float = 27.0, **kw):
+    def __init__(self, key, room_temp: float = 27.0, current_sensor: bool = False,
+                 start_delay_s: float = 0.5, cool_rate_c_per_s: float = 0.0, **kw):
+        kw.setdefault("report_interval_s", 1.0)
         super().__init__(key, **kw)
         self.room = room_temp
+        self.current_sensor = current_sensor
+        self.start_delay = start_delay_s
+        self.rate = cool_rate_c_per_s
+        self.running = False
+
+    def _reported(self):
+        vals = {"current_temp": round(self.room, 2)}
+        if self.current_sensor:
+            vals["running"] = self.running
+        self.publish_state({"climate": vals}, source="reported", kind="telemetry")
 
     def on_online(self):
-        self.publish_state({"climate": {"current_temp": self.room}}, source="reported",
-                           kind="telemetry")
+        self._reported()
+
+    def tick(self):
+        with self.lock:
+            st = dict(self.state.get("climate", {}))
+        if self.running and self.rate:
+            target = st.get("target_temp", 24)
+            if st.get("mode", "cool") == "heat":
+                self.room = min(target, self.room + self.rate)
+            else:
+                self.room = max(target, self.room - self.rate)
+        self._reported()
 
     def _assumed(self, cid, values):
         self.ack(cid)
@@ -356,6 +445,13 @@ class IRClimateSim(SimDevice):
             self.state.setdefault("climate", {}).update(values)
             full = dict(self.state["climate"])
         self.publish_state({"climate": full}, source="assumed")
+        if "power" in values and self.fault != "ir_blocked":
+            def switch():
+                self.running = bool(values["power"])
+                self._reported()
+            t = threading.Timer(self.start_delay, switch)
+            t.daemon = True
+            t.start()
 
     def do_climate_set_power(self, cid, p):
         self._assumed(cid, {"power": p["power"]})
@@ -372,47 +468,90 @@ class IRClimateSim(SimDevice):
 
 class ValveSim(SimDevice):
     """Irrigation valve. max_runtime_s is FIRMWARE-enforced: the valve closes on its own
-    even if the hub, the internet or the broker disappear."""
+    even if the hub, the internet or the broker disappear.
+
+    Like devices/esphome/irrigation-valve.yaml: flow sensor; "no_water" -> no flow while
+    open -> closed after no_flow_s (dry-run protection) + valve.no_flow; "leaking" -> flow
+    while closed -> valve.flow_while_closed; physical emergency button -> emergency_stop()."""
     capabilities = ("valve",)
 
-    def __init__(self, key, max_runtime_s: int = 1800, flow_l_min: float = 12.0, **kw):
+    def __init__(self, key, max_runtime_s: int = 1800, flow_l_min: float = 12.0,
+                 no_flow_s: float = 30.0, **kw):
         super().__init__(key, **kw)
         if not max_runtime_s or max_runtime_s <= 0:
             raise ValueError("valve simulator requires max_runtime_s")
         self.max_runtime_s = max_runtime_s
         self.flow = flow_l_min
+        self.no_flow_s = no_flow_s
         self._closer: Optional[threading.Timer] = None
+        self._dry: Optional[threading.Timer] = None
         self.closed_by_firmware = threading.Event()
+
+    def _flow(self, is_open: bool) -> float:
+        if self.fault == "no_water":
+            return 0.0
+        if self.fault == "leaking" and not is_open:
+            return 2.5
+        return self.flow if is_open else 0.0
 
     def on_online(self):
         with self.lock:
             is_open = self.state.get("valve", {}).get("open", False)
-        self.set_and_publish("valve", {"open": is_open, "flow": self.flow if is_open else 0.0,
+        self.set_and_publish("valve", {"open": is_open, "flow": self._flow(is_open),
                                        "remaining_s": 0})
 
-    def _close(self, by_firmware: bool):
-        if self._closer:
-            self._closer.cancel()
-            self._closer = None
+    def set_fault(self, fault):
+        super().set_fault(fault)
+        if fault == "leaking":
+            with self.lock:
+                is_open = self.state.get("valve", {}).get("open", False)
+            if not is_open:
+                self.publish_state({"valve": {"open": False, "flow": self._flow(False),
+                                              "remaining_s": 0}})
+                self.publish_event("valve.flow_while_closed", {"flow": self._flow(False)})
+
+    def _cancel(self):
+        for t in (self._closer, self._dry):
+            if t:
+                t.cancel()
+        self._closer = self._dry = None
+
+    def _close(self, by_firmware: bool, event: Optional[str] = None, data: Optional[dict] = None):
+        self._cancel()
+        flow = self._flow(False)
         with self.lock:
-            self.state.setdefault("valve", {}).update({"open": False, "flow": 0.0,
+            self.state.setdefault("valve", {}).update({"open": False, "flow": flow,
                                                        "remaining_s": 0})
         if by_firmware:
             self.closed_by_firmware.set()
-        self.publish_state({"valve": {"open": False, "flow": 0.0, "remaining_s": 0}})
+        self.publish_state({"valve": {"open": False, "flow": flow, "remaining_s": 0}})
+        if event:
+            self.publish_event(event, data)
+
+    def emergency_stop(self):
+        """Physical emergency button on the controller."""
+        self._close(True, "valve.emergency_stop")
 
     def do_valve_open(self, cid, p):
-        run = min(int(p["duration_s"]), self.max_runtime_s)
+        asked = int(p["duration_s"])
+        run = min(asked, self.max_runtime_s)
         self.ack(cid)
-        if self._closer:
-            self._closer.cancel()
+        self._cancel()
         self.closed_by_firmware.clear()
-        self._closer = threading.Timer(run, self._close, args=(True,))
+        limited = asked > self.max_runtime_s
+        self._closer = threading.Timer(
+            run, self._close, args=(True, "valve.runtime_limit" if limited else None,
+                                    {"max_runtime_s": self.max_runtime_s} if limited else None))
         self._closer.daemon = True
         self._closer.start()
+        if self.fault == "no_water":
+            self._dry = threading.Timer(self.no_flow_s, self._close,
+                                        args=(True, "valve.no_flow", {"after_s": self.no_flow_s}))
+            self._dry.daemon = True
+            self._dry.start()
         with self.lock:
             self.state.setdefault("valve", {}).update({"open": True})
-        self.publish_state({"valve": {"open": True, "flow": self.flow, "remaining_s": run}})
+        self.publish_state({"valve": {"open": True, "flow": self._flow(True), "remaining_s": run}})
 
     def do_valve_close(self, cid, p):
         self.ack(cid)
@@ -421,6 +560,55 @@ class ValveSim(SimDevice):
     def stop(self, graceful: bool = True):
         # Power is still on for the valve controller: the timer keeps running.
         super().stop(graceful)
+
+
+class ContactSim(SimDevice):
+    """Door/window reed sensor (security zone)."""
+    capabilities = ("contact",)
+
+    def on_online(self):
+        with self.lock:
+            is_open = self.state.get("contact", {}).get("open", False)
+        self.set_and_publish("contact", {"open": is_open})
+
+    def set_open(self, is_open: bool):
+        self.set_and_publish("contact", {"open": is_open})
+
+
+class SirenSim(SimDevice):
+    """Siren on a relay. Its firmware switches it off after max_on_s on its own."""
+    capabilities = ("switch",)
+
+    def __init__(self, key, max_on_s: float = 180.0, **kw):
+        super().__init__(key, **kw)
+        self.max_on_s = max_on_s
+        self._off: Optional[threading.Timer] = None
+
+    def on_online(self):
+        self.set_and_publish("switch", {"on": False})
+
+    @property
+    def on(self) -> bool:
+        with self.lock:
+            return bool(self.state.get("switch", {}).get("on"))
+
+    def _set(self, on: bool):
+        if self._off:
+            self._off.cancel()
+            self._off = None
+        if on:
+            self._off = threading.Timer(self.max_on_s, self._set, args=(False,))
+            self._off.daemon = True
+            self._off.start()
+        self.set_and_publish("switch", {"on": on})
+
+    def do_switch_turn_on(self, cid, p):
+        self.ack(cid)
+        self._set(True)
+
+    def do_switch_turn_off(self, cid, p):
+        self.ack(cid)
+        self._set(False)
 
 
 class ContactorSim(SimDevice):
@@ -463,5 +651,5 @@ class ContactorSim(SimDevice):
 TYPES = {
     "light": LightSim, "power_meter": PowerMeterSim, "environment": EnvironmentSim,
     "motion": MotionSim, "leak": LeakSim, "gate": GateSim, "ir_climate": IRClimateSim,
-    "valve": ValveSim, "contactor": ContactorSim,
+    "valve": ValveSim, "contactor": ContactorSim, "contact": ContactSim, "siren": SirenSim,
 }

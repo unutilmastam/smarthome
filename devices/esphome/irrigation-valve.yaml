@@ -1,0 +1,192 @@
+# ESP32 + relay for one irrigation zone: 24 V AC solenoid valve (ARCHITECTURE 10: "Sug'orish",
+# Faza 11, ADR 0012) + flow sensor + physical emergency button.
+#
+# SAFETY IS HERE, NOT IN THE APP (CLAUDE.md rule 6):
+#   - max_runtime_s: the valve closes on its own after this time, whatever the command said,
+#     even without hub, broker or internet. A longer request is cut and valve.runtime_limit
+#     is reported.
+#   - dry-run protection: open but no flow after no_flow_s -> closed + valve.no_flow
+#     (protects a pump; also tells that the water supply is off).
+#   - flow while closed (stuck valve / burst pipe) -> valve.flow_while_closed (critical).
+#   - emergency button -> closed immediately + valve.emergency_stop.
+#   - power loss / reboot / crash -> relay OFF (restore_mode: ALWAYS_OFF).
+# Confirmation (hub): "open" only counts when open == true AND flow > 0 (ADR 0012).
+# Without a flow sensor, put "valve.flow" in the device's `unsupported` list.
+#
+# Inventory H-11 (zones, valve type, pump, flow sensor) is open: values are defaults.
+# YF-S201 flow sensor: f[Hz] = 7.5 * Q[L/min] -> Q = pulses_per_min / 450.
+
+substitutions:
+  device_key: garden_valve
+  friendly_name: "Sug'orish (bog')"
+  relay_pin: GPIO26
+  flow_pin: GPIO27
+  button_pin: GPIO0
+  max_runtime_s: "1800"     # MUST match (or be below) max_runtime_s in the cloud config
+  no_flow_s: "30"
+  min_flow_l_min: "0.5"
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+globals:
+  - id: close_at_ms
+    type: uint32_t
+    initial_value: "0"
+  - id: opened_at_ms
+    type: uint32_t
+    initial_value: "0"
+  - id: limited             # request was longer than max_runtime_s
+    type: bool
+    initial_value: "false"
+  - id: leak_reported
+    type: bool
+    initial_value: "false"
+
+switch:
+  - platform: gpio
+    id: valve
+    pin: ${relay_pin}
+    restore_mode: ALWAYS_OFF
+    internal: true
+    on_turn_off:
+      - script.execute: publish_state
+
+sensor:
+  - platform: pulse_counter
+    id: flow
+    pin:
+      number: ${flow_pin}
+      mode: INPUT_PULLUP
+    unit_of_measurement: "L/min"
+    update_interval: 2s
+    internal: true
+    filters:
+      - multiply: 0.0022222   # 1 / 450
+
+binary_sensor:
+  - platform: gpio
+    id: emergency_button
+    pin:
+      number: ${button_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+    state_topic: null
+    on_press:
+      - if:
+          condition:
+            switch.is_on: valve
+          then:
+            - switch.turn_off: valve
+            - mqtt.publish_json:
+                topic: home/${device_key}/event
+                qos: 1
+                payload: |-
+                  root["schema"] = 1;
+                  root["type"] = "valve.emergency_stop";
+
+script:
+  - id: publish_state
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            const bool on = id(valve).state;
+            int32_t remaining = 0;
+            if (on && (int32_t) (id(close_at_ms) - millis()) > 0)
+              remaining = (id(close_at_ms) - millis()) / 1000;
+            root["schema"] = 1;
+            root["source"] = "reported";
+            root["states"]["valve"]["open"] = on;
+            if (!isnan(id(flow).state)) root["states"]["valve"]["flow"] = id(flow).state;
+            root["states"]["valve"]["remaining_s"] = remaining;
+  - id: send_event
+    parameters:
+      type: std::string
+    then:
+      - lambda: |-
+          id(mqtt_client).publish_json("home/${device_key}/event", [&](JsonObject root) {
+            root["schema"] = 1;
+            root["type"] = type;
+            if (type == "valve.runtime_limit") root["data"]["max_runtime_s"] = ${max_runtime_s};
+            if (type == "valve.no_flow") root["data"]["after_s"] = ${no_flow_s};
+            if (type == "valve.flow_while_closed" && !isnan(id(flow).state))
+              root["data"]["flow"] = id(flow).state;
+          }, 1, false);
+
+# Firmware watchdog for the valve: runs every second, independent of any connection.
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const float q = isnan(id(flow).state) ? 0.0f : id(flow).state;
+          if (id(valve).state) {
+            if ((int32_t) (now - id(close_at_ms)) >= 0) {
+              id(valve).turn_off();
+              if (id(limited)) id(send_event).execute("valve.runtime_limit");
+            } else if (now - id(opened_at_ms) >= ${no_flow_s} * 1000UL && q < ${min_flow_l_min}) {
+              id(valve).turn_off();
+              id(send_event).execute("valve.no_flow");
+            }
+          } else if (q >= ${min_flow_l_min} && !id(leak_reported)) {
+            id(leak_reported) = true;
+            id(send_event).execute("valve.flow_while_closed");
+            id(publish_state).execute();
+          } else if (q < ${min_flow_l_min}) {
+            id(leak_reported) = false;
+          }
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            switch.is_on: valve
+          then:
+            - script.execute: publish_state
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "valve") { ack("rejected", "invalid_params"); return; }
+            if (act == "open") {
+              const int32_t asked = x["params"]["duration_s"] | 0;
+              if (asked <= 0) { ack("rejected", "invalid_params"); return; }  // never open "forever"
+              const int32_t run = asked > ${max_runtime_s} ? ${max_runtime_s} : asked;
+              id(limited) = asked > ${max_runtime_s};
+              ack("acked", nullptr);
+              id(opened_at_ms) = millis();
+              id(close_at_ms) = millis() + (uint32_t) run * 1000UL;
+              id(valve).turn_on();
+              id(publish_state).execute();
+            } else if (act == "close") {
+              ack("acked", nullptr);
+              id(valve).turn_off();
+            } else {
+              ack("rejected", "invalid_params");
+            }

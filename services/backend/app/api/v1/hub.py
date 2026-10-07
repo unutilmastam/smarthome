@@ -22,6 +22,7 @@ from app.models import Device, Home, Hub
 from app.schemas.common import Model
 from app.services.commands import apply_ack, claim_for_hub, expire_due
 from app.services.device_view import iso
+from app.services.events import ingest as ingest_events
 from app.services.hub_reports import apply_report
 from app.services.telemetry import ingest as ingest_telemetry
 
@@ -135,3 +136,10 @@ def post_telemetry(body: dict = Body(...), hub: Hub = Depends(get_hub),
                    db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
     _validate(contracts, "telemetry-batch.schema.json", body)
     return ok(ingest_telemetry(db, hub, contracts, body))
+
+
+@router.post("/events")
+def post_events(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
+    _validate(contracts, "hub-events.schema.json", body)
+    return ok(ingest_events(db, hub, contracts, body))

@@ -139,7 +139,23 @@ def test_expectations():
     assert expectation("cover", "open", {})({"state": "open"}) is True
     assert expectation("cover", "open", {})({"position": 50}) is None
     assert expectation("contactor", "close", {})({"aux_contact_closed": True}) is True
-    assert expectation("climate", "set_power", {"power": True}) is None
+    # IR climate: only a current sensor (climate.running) can confirm; without it, no check.
+    assert expectation("climate", "set_power", {"power": True},
+                       unsupported=frozenset({"climate.running"})) is None
+    run = expectation("climate", "set_power", {"power": True})
+    assert run({"power": True}) is None            # assumed power proves nothing
+    assert run({"running": True}) is True
+    assert expectation("climate", "set_target_temp", {"target_temp": 22}) is None
+    # Valve with a flow sensor: open only counts when water flows.
+    vo = expectation("valve", "open", {"duration_s": 60})
+    assert vo({"open": True, "flow": 0.0}) is False
+    assert vo({"open": True, "flow": 11.5}) is True
+    assert vo({"open": True}) is None
+    assert expectation("valve", "open", {"duration_s": 60},
+                       unsupported=frozenset({"valve.flow"}))({"open": True}) is True
+    assert expectation("alarm", "arm_away", {})({"state": "arming"}) is False
+    assert expectation("alarm", "arm_away", {})({"state": "armed_away"}) is True
+    assert expectation("alarm", "disarm", {})({"state": "disarmed"}) is True
 
 
 def test_store_outbox_order_and_state(tmp_path):

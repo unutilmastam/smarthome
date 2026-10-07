@@ -33,6 +33,8 @@ export function Layout() {
     { to: "/devices", icon: "devices", label: t("nav.devices") },
     { to: "/energy", icon: "energy", label: t("nav.energy") },
     { to: "/cameras", icon: "camera", label: t("nav.cameras") },
+    { to: "/security", icon: "shield", label: t("nav.security") },
+    { to: "/events", icon: "bell", label: t("nav.events") },
     { to: "/hub", icon: "hub", label: t("nav.hub") },
     { to: "/settings", icon: "settings", label: t("nav.settings") },
     ...(owner ? [{ to: "/members", icon: "members", label: t("nav.members") }] : []),

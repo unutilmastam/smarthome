@@ -40,7 +40,7 @@ PIN = "4821"
 DEVICES = {
     "garden_lights": {"capabilities": {"switch": {}, "dimmer": {}}},
     "front_gate": {"capabilities": {"cover": {"confirm_timeout_s": 4}}},
-    "ac_bedroom": {"capabilities": {"climate": {}}},
+    "ac_bedroom": {"capabilities": {"climate": {}}, "unsupported": ["climate.running"]},
     "garden_valve": {"capabilities": {"valve": {"max_runtime_s": 600}}},
     "main_meter": {"capabilities": {"power_meter": {}},
                    "unsupported": ["power_meter.frequency"]},
@@ -61,7 +61,8 @@ class FlakyTransport(httpx.AsyncBaseTransport):
 
 
 class Stack:
-    def __init__(self, broker, tmp_path, realtime=None, **gw_overrides):
+    def __init__(self, broker, tmp_path, realtime=None, devices=None, make_sims=None,
+                 **gw_overrides):
         self.broker = broker
         settings = Settings(_env_file=None, env="test")
         engine = make_engine(f"sqlite:///{tmp_path / 'backend.db'}")
@@ -76,7 +77,7 @@ class Stack:
         self.phone.headers["Authorization"] = f"Bearer {tok.json()['data']['access_token']}"
         self.phone.post("/api/v1/auth/pin", json={"password": PASSWORD, "pin": PIN})
         self.ids = {}
-        for key, spec in DEVICES.items():
+        for key, spec in (devices or DEVICES).items():
             body = {"key": key, "name": key, "adapter": "esphome", "protocol": "mqtt", **spec}
             r = self.phone.post(f"/api/v1/homes/{self.home_id}/devices", json=body)
             assert r.status_code == 201, r.text
@@ -99,6 +100,9 @@ class Stack:
                                backend=BackendClient("http://backend", self.hub_info["hub_token"],
                                                      client=client))
         kw = dict(host=broker["host"], port=broker["port"], password=SIM_PASSWORD)
+        if make_sims is not None:
+            self.sims = make_sims(kw)
+            return
         self.sims = {
             "garden_lights": LightSim("garden_lights", **kw),
             "front_gate": GateSim("front_gate", travel_time_s=1.0, **kw),
@@ -159,7 +163,8 @@ class Stack:
             c = last.get("c") or {}
             raise AssertionError(
                 f"command {cid} not in {statuses}: status={c.get('status')} "
-                f"reason={c.get('reason')} events={[(e['status'], e['detail']) for e in c.get('events', [])]}")
+                f"reason={c.get('reason')} created={c.get('created_at')} events="
+                f"{[(e['status'], e['source'], e['applied'], e['ts'], e['detail']) for e in c.get('events', [])]}")
 
     def device(self, key):
         return self.phone.get(f"/api/v1/devices/{self.ids[key]}").json()["data"]

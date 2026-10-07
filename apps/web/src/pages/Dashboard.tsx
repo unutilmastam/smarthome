@@ -5,6 +5,8 @@ import type { Device } from "../api/types";
 import { DeviceCard } from "../components/DeviceCard";
 import { useAddFlow, useCanConfigure } from "../components/AddFlow";
 import { Icon } from "../components/Icon";
+import { IrrigationStop } from "../components/IrrigationStop";
+import { Link } from "react-router-dom";
 import { useLive } from "../components/Layout";
 import { roomIcon } from "../lib/catalog";
 import { useCurrentHome } from "../lib/home";
@@ -59,6 +61,8 @@ export function Dashboard() {
   const shown = room ? base.filter((d) => d.room_id === room) : base;
   return (
     <>
+      <IrrigationStop devices={list} />
+      <AlarmBanner devices={list} />
       <div className="stats">
         <Stat testid="stat-lights" icon="bulb" tone="tone-light" label={t("dashboard.lightsOn")} value={stats.lights} />
         <Stat testid="stat-power" icon="energy" tone="tone-power" label={t("dashboard.powerNow")} value={stats.power} />
@@ -98,5 +102,21 @@ function FirstRun() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Security state at a glance; links to the security page. Shows only a REPORTED state. */
+function AlarmBanner({ devices }: { devices: Device[] }) {
+  const { t } = useTranslation();
+  const alarm = devices.find((d) => "alarm" in d.capabilities);
+  const v = alarm?.capabilities.alarm.attributes.state;
+  if (!alarm || !v || (v.quality !== "good" && v.quality !== "stale")) return null;
+  const st = String(v.value);
+  return (
+    <Link to="/security" className={`banner alarm-banner state-${st}`} data-testid="alarm-banner">
+      <Icon name={st === "disarmed" ? "unlock" : "shield"} />
+      <span style={{ flex: 1 }}>{t("security.title")}: <strong>{t(`enum.${st}`, { defaultValue: st })}</strong></span>
+      <Icon name="chevron" size={18} />
+    </Link>
   );
 }

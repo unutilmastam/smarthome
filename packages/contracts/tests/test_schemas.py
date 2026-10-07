@@ -13,6 +13,7 @@ EXPECTED = {
     "capabilities.schema.json",
     "local-mqtt.schema.json",
     "telemetry-batch.schema.json",
+    "hub-events.schema.json",
 }
 
 UUID1 = "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f"
@@ -206,3 +207,33 @@ def test_telemetry_batch(validator_for):
     assert not v.is_valid({"schema": 1, "items": [dict(item, ts="2026-10-07T12:51:13Z")]})
     assert not v.is_valid({"schema": 1, "items": [dict(item, metric="power")]})
     assert not v.is_valid({"schema": 1, "items": []})
+
+
+# ---- events (ADR 0012) ---------------------------------------------------------
+
+def _local_event_validator():
+    local = all_schemas()["local-mqtt.schema.json"]
+    return Draft202012Validator({**local["$defs"]["event"], "$defs": local["$defs"]},
+                                format_checker=Draft202012Validator.FORMAT_CHECKER)
+
+
+def test_local_event_message():
+    v = _local_event_validator()
+    v.validate({"schema": 1, "type": "cover.left_open", "data": {"open_s": 900}})
+    v.validate({"schema": 1, "ts": TS, "type": "valve.runtime_limit"})
+    for bad in ({"schema": 1, "type": "left_open"},               # no capability prefix
+                {"schema": 1, "type": "cover.left_open", "severity": "info"},  # severity is not the device's call
+                {"schema": 2, "type": "cover.left_open"},
+                {"schema": 1, "type": "Cover.Open"}):
+        assert not v.is_valid(bad), bad
+
+
+def test_hub_events_batch(validator_for):
+    v = validator_for("hub-events.schema.json")
+    ev = {"id": UUID1, "ts": TS, "device_key": "front_gate", "type": "cover.left_open",
+          "severity": "warning", "data": {"open_s": 600}}
+    v.validate({"schema": 1, "events": [ev]})
+    assert not v.is_valid({"schema": 1, "events": []})
+    assert not v.is_valid({"schema": 1, "events": [{**ev, "id": "x"}]})
+    assert not v.is_valid({"schema": 1, "events": [{**ev, "severity": "panic"}]})
+    assert not v.is_valid({"schema": 1, "events": [{k: v_ for k, v_ in ev.items() if k != "id"}]})

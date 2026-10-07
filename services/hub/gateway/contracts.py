@@ -27,7 +27,7 @@ class Contracts:
         local = schemas["local-mqtt.schema.json"]
         self.local = {n: Draft202012Validator({**local["$defs"][n], "$defs": local["$defs"]},
                                               format_checker=fc)
-                      for n in ("cmd", "ack", "state")}
+                      for n in ("cmd", "ack", "state", "event")}
         self._cache: Dict[tuple, Draft202012Validator] = {}
 
     def allowed(self, role: str, permission: str) -> bool:

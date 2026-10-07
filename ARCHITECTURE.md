@@ -209,6 +209,7 @@ home/{device_key}/telemetry                  — o'lchovlar (qisman bo'lishi mum
 home/{device_key}/availability   (retained, LWT) — online/offline
 home/{device_key}/cmd                        — buyruq (faqat gateway yozadi)
 home/{device_key}/ack                        — buyruq natijasi
+home/{device_key}/event                      — bir martalik voqea (ADR 0012): "cover.left_open", "alarm.triggered", ...
 ```
 Xabar formatlari: `packages/contracts/schemas/local-mqtt.schema.json`. Qurilma xom qiymat yuboradi; `source/quality/ts` ni gateway qo'shadi.
 
@@ -261,6 +262,7 @@ schedules
 notifications (severity, source, title, body, acked_by, acked_at)
 push_subscriptions, telegram_links
 cameras (hub_id, name, frigate_name, room_id)   -- VIDEO YO'Q
+events (home_id, device_id, type, severity, ts, data)   -- voqealar tasmasi, 180 kun (ADR 0012)
 audit_log (actor, action, target, ip, ts, details)
 ```
 - Hammasi UTC. Indekslar: `(device_id, ts)`.
@@ -279,6 +281,7 @@ devices:       /devices (filter: room, type, status), /devices/{id}, /devices/{i
 commands:      POST /commands, GET /commands/{id}, POST /groups/{id}/commands
 automations:   /automations, /automations/{id}/runs, POST /automations/validate
 energy:        /energy/summary?period=, /energy/circuits/{id}
+events:        GET /homes/{id}/events (severity, capability, device_id, before) — ADR 0012
 notifications: /notifications, POST /notifications/{id}/ack, /push/subscribe
 cameras:       /cameras (metadata), GET /cameras/{id}/access  -> Tailscale/lokal URL
 health:        /health, /homes/{id}/health
@@ -288,7 +291,7 @@ hub (Hub uchun, hub token bilan):
                GET  /hub/commands    (navbatdagi imzolangan buyruqlar; bir marta beriladi → status 'sent')
                POST /hub/acks        (buyruq natijalari)
                POST /hub/report      (holatlar + availability, device_key bo'yicha)
-               POST /hub/telemetry:batch, /hub/events
+               POST /hub/telemetry:batch, /hub/events (hub-events.schema.json, id bo'yicha idempotent)
                GET  /hub/config      (qurilmalar, avtomatikalar — sinxron)
 ```
 - Javob formati: `{ "data": ..., "error": null, "meta": {...} }`.
@@ -326,10 +329,10 @@ Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live
 | Chiroq | ESP32 + rele / Sonoff (ESPHome), dimmer uchun MOSFET/triac modul | Rele holati + ixtiyoriy tok |
 | Elektr panel | SDM120 (1 faza) / SDM630 (3 faza) Modbus RTU → RS485 → ESP32 yoki Hub USB; arzon variant PZEM-004T v3 | Faqat hisoblagich ko'rsatgani. **Avtomat (breaker) holatini dastur bilmaydi** — faqat yordamchi kontakt bo'lsa |
 | Liniya o'chirish | Kontaktor (DIN) + yordamchi kontakt (NO/NC) holat uchun | Yordamchi kontakt |
-| Darvoza | Mavjud darvoza blokining "start/open/close" kirishi + rele; ochiq/yopiq gerkon datchiklari | Gerkon. **Fotoelement apparatda qoladi** |
-| Konditsioner | ESP32 + IR LED (ESPHome climate_ir) yoki ishlab chiqaruvchi API | `assumed` + xona harorati/tok |
-| Xavfsizlik | PIR, LD2410 radar, gerkonlar, sirena | Datchik o'zi |
-| Sug'orish | 24V AC klapanlar + rele, tuproq namligi (sig'imli), oqim datchigi | Oqim datchigi; ESP32'da `max_runtime` majburiy |
+| Darvoza | Mavjud darvoza blokining "start/open/close" kirishi + rele; ochiq/yopiq gerkon datchiklari | Gerkon. **Fotoelement apparatda qoladi** (`cover.obstructed` faqat ko'rsatiladi; yopiq/ochiq gerkon ziddiyati → `unknown`) — `devices/esphome/gate.yaml` |
+| Konditsioner | ESP32 + IR LED (ESPHome climate_ir) yoki ishlab chiqaruvchi API | `assumed` + xona harorati; **tok datchigi (`climate.running`) bo'lsa — `confirmed`** — `ir-climate.yaml` |
+| Xavfsizlik | PIR, LD2410 radar, gerkonlar, sirena | Datchik o'zi. Signalizatsiya Hub'da ishlaydi (`alarm`, ADR 0012); sirena vaqti proshivkada ham cheklangan — `security-sensor.yaml`, `siren.yaml` |
+| Sug'orish | 24V AC klapanlar + rele, tuproq namligi (sig'imli), oqim datchigi | Oqim datchigi (`open` + `flow > 0`); ESP32'da `max_runtime`, quruq ishlash himoyasi, favqulodda tugma — `irrigation-valve.yaml` |
 | Suv oqishi | Leak datchiklar + elektromagnit klapan | Datchik |
 | Kamera | ONVIF/RTSP IP kameralar (PoE), alohida VLAN, internetga chiqish yopiq | Frigate holati |
 | Tarmoq | Router (OpenWrt/MikroTik bo'lsa API), ping monitoring | Ping/API |

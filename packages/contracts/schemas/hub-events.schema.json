@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/hub-events.schema.json",
+  "title": "Hub -> Backend events batch (POST /api/v1/hub/events, ADR 0012)",
+  "description": "The gateway assigns 'id' when it first sees the event, so a retried batch is idempotent. 'device_key' is the device that published it (or the hub's virtual alarm device).",
+  "type": "object",
+  "required": ["schema", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": ["id", "ts", "device_key", "type", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "ts": { "type": "string", "format": "date-time", "pattern": "Z$" },
+          "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+          "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "maxLength": 64 },
+          "severity": { "enum": ["info", "warning", "critical"] },
+          "data": { "type": "object", "maxProperties": 16 }
+        }
+      }
+    }
+  }
+}

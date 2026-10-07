@@ -48,6 +48,12 @@ export interface Home {
 }
 
 export interface EnergyDevice { device_id: string; key: string; name: string; kwh: number; cost: number | null; currency: string | null; days_with_data: number }
+/** Event from a device or the hub (ADR 0012). */
+export interface HomeEvent {
+  id: string; ts: string; type: string; severity: "info" | "warning" | "critical";
+  device_id: string | null; device_key: string; device_name: string | null; data: Record<string, unknown>;
+}
+
 export interface EnergySummary {
   period: "day" | "month"; from: string; to: string; timezone: string;
   tariff_per_kwh: number | null; currency: string; total_kwh: number | null; total_cost: number | null;

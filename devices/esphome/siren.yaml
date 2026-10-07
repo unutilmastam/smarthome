@@ -1,0 +1,75 @@
+# ESP32 + relay for an alarm siren (ARCHITECTURE 10: "Xavfsizlik", Faza 11, ADR 0012).
+# Switched by the hub's security system (gateway/alarm.py) with ordinary switch commands.
+#
+# The maximum on-time is enforced HERE (CLAUDE.md rule 6): even if the hub dies while the
+# siren is on, it stops after max_on_s. Power loss / reboot -> OFF.
+# Inventory H-13 (existing sensors / siren) is open: values are defaults.
+
+substitutions:
+  device_key: siren
+  friendly_name: "Sirena"
+  relay_pin: GPIO26
+  max_on_s: "180"
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+switch:
+  - platform: gpio
+    id: relay
+    pin: ${relay_pin}
+    restore_mode: ALWAYS_OFF
+    internal: true
+    on_turn_on:
+      - script.execute: auto_off
+      - script.execute: publish_state
+    on_turn_off:
+      - script.stop: auto_off
+      - script.execute: publish_state
+
+script:
+  - id: auto_off
+    mode: restart
+    then:
+      - delay: ${max_on_s}s
+      - switch.turn_off: relay
+  - id: publish_state
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            root["states"]["switch"]["on"] = id(relay).state;
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "switch") { ack("rejected", "invalid_params"); return; }
+            if (act == "turn_on") { ack("acked", nullptr); id(relay).turn_on(); }
+            else if (act == "turn_off") { ack("acked", nullptr); id(relay).turn_off(); }
+            else { ack("rejected", "invalid_params"); }

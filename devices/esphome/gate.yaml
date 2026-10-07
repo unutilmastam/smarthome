@@ -1,0 +1,223 @@
+# ESP32 next to the existing gate controller (ARCHITECTURE 10: "Darvoza", Faza 11, ADR 0012).
+#
+# The ESP32 does NOT drive the motor. It only pulses the controller's own OPEN / CLOSE / STOP
+# inputs (dry contacts via relays) and reads:
+#   - two reed switches: gate fully open / fully closed  -> the ONLY source of "open"/"closed"
+#   - the photocell output (beam interrupted)            -> cover.obstructed, display only
+# The photocell keeps acting on the gate controller IN HARDWARE (it stops/reverses the motor
+# by itself). This firmware is an extra guard: it refuses "close" while the beam is cut.
+#
+# Contract (packages/contracts): capability "cover".
+#   state: open | closed (reed) | opening | closing (after our pulse) | stopped | unknown
+#   No position encoder -> declare "cover.position" in the device's `unsupported` list.
+# Events (home/<key>/event): cover.obstructed, cover.travel_timeout, cover.sensor_conflict.
+# Inventory H-05 (controller model, inputs, photocell) is still open: pins are defaults.
+#
+# Wiring to the gate controller is done by a qualified installer (ARCHITECTURE 10).
+
+substitutions:
+  device_key: front_gate
+  friendly_name: "Darvoza"
+  open_pin: GPIO26          # relay -> controller OPEN input
+  close_pin: GPIO27         # relay -> controller CLOSE input
+  stop_pin: GPIO25          # relay -> controller STOP input
+  reed_open_pin: GPIO32     # closed contact when the gate is fully open
+  reed_closed_pin: GPIO33   # closed contact when the gate is fully closed
+  photocell_pin: GPIO34     # input-only pin: external pull-up; LOW = beam interrupted
+  max_travel_s: "60"        # no end reed within this time -> stopped + travel_timeout
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+globals:
+  - id: moving              # 1 opening, -1 closing, 0 not moving (as commanded by us)
+    type: int
+    initial_value: "0"
+  - id: move_started_ms
+    type: uint32_t
+    initial_value: "0"
+  - id: conflict_reported
+    type: bool
+    initial_value: "false"
+
+switch:
+  - platform: gpio
+    id: relay_open
+    pin: ${open_pin}
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: relay_close
+    pin: ${close_pin}
+    restore_mode: ALWAYS_OFF
+    internal: true
+  - platform: gpio
+    id: relay_stop
+    pin: ${stop_pin}
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+binary_sensor:
+  - platform: gpio
+    id: reed_open
+    pin:
+      number: ${reed_open_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+    state_topic: null
+    on_press:
+      - lambda: id(moving) = 0;
+    on_state:
+      - script.execute: check_conflict
+      - script.execute: publish_state
+  - platform: gpio
+    id: reed_closed
+    pin:
+      number: ${reed_closed_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+    state_topic: null
+    on_press:
+      - lambda: id(moving) = 0;
+    on_state:
+      - script.execute: check_conflict
+      - script.execute: publish_state
+  - platform: gpio
+    id: photocell
+    pin:
+      number: ${photocell_pin}
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    state_topic: null
+    on_press:
+      - mqtt.publish_json:
+          topic: home/${device_key}/event
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["type"] = "cover.obstructed";
+    on_state:
+      - script.execute: publish_state
+
+script:
+  - id: pulse_open
+    then:
+      - switch.turn_on: relay_open
+      - delay: 500ms
+      - switch.turn_off: relay_open
+  - id: pulse_close
+    then:
+      - switch.turn_on: relay_close
+      - delay: 500ms
+      - switch.turn_off: relay_close
+  - id: pulse_stop
+    then:
+      - switch.turn_on: relay_stop
+      - delay: 500ms
+      - switch.turn_off: relay_stop
+  - id: check_conflict
+    then:
+      - lambda: |-
+          const bool both = id(reed_open).state && id(reed_closed).state;
+          if (both && !id(conflict_reported)) {
+            id(conflict_reported) = true;
+            id(moving) = 0;
+            id(mqtt_client).publish_json("home/${device_key}/event", [](JsonObject root) {
+              root["schema"] = 1;
+              root["type"] = "cover.sensor_conflict";
+            }, 1, false);
+          } else if (!both) {
+            id(conflict_reported) = false;
+          }
+  - id: publish_state
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            const bool o = id(reed_open).state, c = id(reed_closed).state;
+            const char *st;
+            if (o && c) st = "unknown";            // broken/misplaced reed: never guess
+            else if (c) st = "closed";
+            else if (o) st = "open";
+            else if (id(moving) > 0) st = "opening";
+            else if (id(moving) < 0) st = "closing";
+            else st = "stopped";
+            root["schema"] = 1;
+            root["source"] = "reported";
+            root["states"]["cover"]["state"] = st;
+            root["states"]["cover"]["obstructed"] = id(photocell).state;
+
+# Travel watchdog: an end reed must be reached within max_travel_s.
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (id(moving) == 0) return;
+          if (millis() - id(move_started_ms) < ${max_travel_s} * 1000UL) return;
+          const char *target = id(moving) > 0 ? "open" : "closed";
+          id(moving) = 0;
+          id(publish_state).execute();
+          id(mqtt_client).publish_json("home/${device_key}/event", [target](JsonObject root) {
+            root["schema"] = 1;
+            root["type"] = "cover.travel_timeout";
+            root["data"]["target"] = target;
+          }, 1, false);
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason, const char *detail) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+                if (detail != nullptr) root["detail"] = detail;
+              }, 1, false);
+            };
+            if (cap != "cover") { ack("rejected", "invalid_params", "unknown capability"); return; }
+            if (id(reed_open).state && id(reed_closed).state) {
+              ack("rejected", "safety_rule", "reed sensor conflict");
+              return;
+            }
+            if (act == "open") {
+              ack("acked", nullptr, nullptr);
+              id(moving) = 1;
+              id(move_started_ms) = millis();
+              id(pulse_open).execute();
+            } else if (act == "close") {
+              if (id(photocell).state) { ack("rejected", "safety_rule", "photocell interrupted"); return; }
+              ack("acked", nullptr, nullptr);
+              id(moving) = -1;
+              id(move_started_ms) = millis();
+              id(pulse_close).execute();
+            } else if (act == "stop") {
+              ack("acked", nullptr, nullptr);
+              id(moving) = 0;
+              id(pulse_stop).execute();
+            } else {
+              ack("rejected", "invalid_params", "unknown action");
+              return;
+            }
+            id(publish_state).execute();

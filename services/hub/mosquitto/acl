@@ -7,4 +7,5 @@ pattern write home/%u/state
 pattern write home/%u/telemetry
 pattern write home/%u/availability
 pattern write home/%u/ack
+pattern write home/%u/event
 pattern read home/%u/cmd

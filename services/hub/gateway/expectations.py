@@ -1,12 +1,14 @@
 """What state proves that a command really happened (ARCHITECTURE 4.3).
 
 `confirmed` is only sent when a state report received AFTER the command matches.
-Capabilities with `confirm_attribute` (cover, lock, contactor, valve) fail with
+Capabilities with `confirm_attribute` (cover, lock, contactor, valve, alarm) fail with
 no_feedback when the state does not arrive in time. Others stay `acked`.
-IR devices (source=assumed) are never confirmed.
+IR devices (source=assumed) are never confirmed by their assumed values; an IR climate
+unit with a current sensor (`climate.running`, ADR 0012) is confirmed by that sensor.
+A valve with a flow sensor is only confirmed open when water really flows.
 """
 
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, FrozenSet, Optional
 
 Check = Callable[[Dict[str, object]], Optional[bool]]
 
@@ -27,8 +29,24 @@ def _in(attr: str, values) -> Check:
     return check
 
 
+def _all(*checks: Check) -> Check:
+    def check(attrs):
+        results = [c(attrs) for c in checks]
+        if any(r is False for r in results):
+            return False
+        return None if any(r is None for r in results) else True
+    return check
+
+
+def _flowing(attrs):
+    if "flow" not in attrs:
+        return None
+    return isinstance(attrs["flow"], (int, float)) and attrs["flow"] > 0
+
+
 def expectation(capability: str, action: str, params: dict,
-                previous: Optional[dict] = None) -> Optional[Check]:
+                previous: Optional[dict] = None,
+                unsupported: FrozenSet[str] = frozenset()) -> Optional[Check]:
     if capability == "switch":
         if action == "turn_on":
             return _eq("on", True)
@@ -53,5 +71,13 @@ def expectation(capability: str, action: str, params: dict,
         return {"close": _eq("aux_contact_closed", True),
                 "open": _eq("aux_contact_closed", False)}.get(action)
     if capability == "valve":
-        return {"open": _eq("open", True), "close": _eq("open", False)}.get(action)
-    return None  # climate (IR, assumed) and anything unknown: no confirmation
+        if action == "open":
+            return _eq("open", True) if "valve.flow" in unsupported \
+                else _all(_eq("open", True), _flowing)
+        return {"close": _eq("open", False)}.get(action)
+    if capability == "climate" and action == "set_power" and "climate.running" not in unsupported:
+        return _eq("running", params["power"])
+    if capability == "alarm":
+        return {"arm_away": _eq("state", "armed_away"), "arm_home": _eq("state", "armed_home"),
+                "disarm": _eq("state", "disarmed")}.get(action)
+    return None  # other climate actions (IR, assumed) and anything unknown: no confirmation

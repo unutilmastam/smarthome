@@ -26,6 +26,7 @@ export const DEVICE_TYPES: DeviceType[] = [
   { id: "irrigation", icon: "sprinkler", caps: ["valve"] },
   { id: "meter", icon: "meter", caps: ["power_meter"] },
   { id: "contactor", icon: "power", caps: ["contactor"] },
+  { id: "siren", icon: "siren", caps: ["switch"] },
   { id: "motion", icon: "motion", caps: ["motion"] },
   { id: "door", icon: "door", caps: ["contact"] },
   { id: "leak", icon: "leak", caps: ["leak"] },

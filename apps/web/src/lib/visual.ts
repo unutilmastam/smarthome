@@ -30,6 +30,12 @@ function derivedVisual(d: Device): Visual {
   const c = d.capabilities;
   const offline = !d.hub_online || d.availability.status === "offline";
   const base = { offline };
+  if (c.alarm) {
+    const st = val(c.alarm.attributes.state) as string | undefined;
+    const alarm = st === "triggered" || st === "pending";
+    return { ...base, icon: "shield", tone: alarm ? "alert" : st?.startsWith("armed") ? "power" : "neutral",
+      active: st === undefined ? null : st !== "disarmed", anim: alarm || st === "arming" ? "pulse" : undefined };
+  }
   if (c.cover) {
     const st = val(c.cover.attributes.state) as string | undefined;
     const moving = st === "opening" || st === "closing";

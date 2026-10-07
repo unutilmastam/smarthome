@@ -21,9 +21,14 @@ def validate_capabilities(contracts: Contracts, caps: Dict[str, dict],
         if not isinstance(cfg, dict):
             errors.append(f"{name}: config must be an object")
             continue
-        extra = set(cfg) - ALLOWED_CONFIG_KEYS
-        if extra:
-            errors.append(f"{name}: unknown config keys {sorted(extra)}")
+        specific = {k: v for k, v in cfg.items() if k not in ALLOWED_CONFIG_KEYS}
+        validator = contracts.config_validator(name)
+        if validator is None:
+            if specific:
+                errors.append(f"{name}: unknown config keys {sorted(specific)}")
+        else:
+            # Capability-specific keys are checked against the contract (ADR 0012).
+            errors += [f"{name}: {e.message}" for e in validator.iter_errors(specific)]
         for k in ("report_interval_s", "max_runtime_s", "confirm_timeout_s"):
             if k in cfg and (not isinstance(cfg[k], int) or isinstance(cfg[k], bool)
                              or cfg[k] <= 0):

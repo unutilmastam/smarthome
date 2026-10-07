@@ -7,11 +7,13 @@ config refresh, MQTT listener, outbox flush (offline buffer), periodic full repo
 import asyncio
 import json
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Set
 
 import aiomqtt
 
+from gateway.alarm import AlarmEngine
 from gateway.backend import BackendClient, BackendError
 from gateway.config import GatewaySettings
 from gateway.contracts import Contracts
@@ -21,6 +23,7 @@ from gateway.store import Store
 from gateway.telemetry import RAW_RETENTION, Aggregator
 from gateway.timeutil import iso, parse_ts, utcnow
 from gateway.verifier import verify_envelope
+from gateway.watchers import DEFAULT_LEFT_OPEN_S, DEFAULT_NO_EFFECT_S, ClimateWatcher, GateWatcher
 
 log = logging.getLogger("gateway")
 
@@ -45,9 +48,11 @@ class Gateway:
         self.store = store or Store(settings.db_path)
         self.backend = backend or BackendClient(settings.backend_url, settings.hub_token)
         self.devices: Dict[str, dict] = {}
+        # Virtual devices run on the hub itself (ADR 0012): device_key -> engine.
+        self.alarms: Dict[str, AlarmEngine] = {}
+        self.gate_watch = GateWatcher(self.emit_event)
+        self.climate_watch = ClimateWatcher(self.emit_event)
         cached = self.store.get_kv("config")
-        if cached:
-            self._apply_config(cached)
         self.mqtt: Optional[aiomqtt.Client] = None
         self.mqtt_connected = asyncio.Event()
         self.pending: Dict[str, Pending] = {}
@@ -65,13 +70,16 @@ class Gateway:
         self.disk_usage_pct: Optional[float] = None
         self._tasks: list = []
         self._stop = asyncio.Event()
+        if cached:  # last known config: the hub works offline from the first second
+            self._apply_config(cached)
 
     # ---- lifecycle -------------------------------------------------------------------
     async def run(self) -> None:
         self._tasks = [asyncio.create_task(c) for c in (
             self._mqtt_loop(), self._heartbeat_loop(), self._config_loop(),
             self._poll_loop(), self._flush_loop(), self._full_report_loop(),
-            self._cloud_loop(), self._cloud_publish_loop(), self._frigate_loop())]
+            self._cloud_loop(), self._cloud_publish_loop(), self._frigate_loop(),
+            self._watch_loop())]
         await self._stop.wait()
 
     async def stop(self) -> None:
@@ -85,6 +93,106 @@ class Gateway:
     def _apply_config(self, cfg: dict) -> None:
         self.devices = {d["key"]: d for d in cfg.get("devices", [])}
         self.home_id = (cfg.get("home") or {}).get("id")
+        self._sync_virtual_devices()
+
+    # ---- virtual devices on the hub (ADR 0012) --------------------------------------
+    def _sync_virtual_devices(self) -> None:
+        wanted = {k: d for k, d in self.devices.items()
+                  if d.get("adapter") == "hub" and "alarm" in d.get("capabilities", {})}
+        for key in set(self.alarms) - set(wanted):
+            del self.alarms[key]
+        for key, d in wanted.items():
+            cfg = d["capabilities"]["alarm"] or {}
+            if key in self.alarms:
+                self.alarms[key].reconfigure(cfg)
+                continue
+            eng = AlarmEngine(
+                key=key, config=cfg,
+                publish=lambda attrs, k=key: self._virtual_state(k, "alarm", attrs),
+                event=lambda t, data, k=key: self.emit_event(k, t, data),
+                siren=self.siren,
+                zone_value=lambda dk, cap, attr: self._known(dk, cap, attr),
+                save=lambda snap, k=key: self.store.put_kv(f"alarm:{k}", snap))
+            eng.restore(self.store.get_kv(f"alarm:{key}"))
+            self.alarms[key] = eng
+            self.store.set_availability(key, "online")
+            self.dirty_availability.add(key)
+            eng.announce()
+
+    def _known(self, key: str, cap: str, attr: str):
+        """Latest REPORTED value, or None if unknown or the device is offline."""
+        if self.store.availability().get(key) == "offline":
+            return None
+        st = self.store.get_state(key, cap, attr)
+        if st is None or st.get("source") != "reported":
+            return None
+        return st["value"]
+
+    def _virtual_state(self, key: str, cap: str, attrs: dict) -> None:
+        self._handle_state(key, {"schema": 1, "source": "reported", "ts": iso(utcnow()),
+                                 "states": {cap: attrs}})
+
+    def siren(self, key: str, on: bool) -> None:
+        """Hub-local command to a siren (switch). Hub-internal, like automations (Phase 12):
+        not a remote command, so there is no cloud signature; the siren firmware also
+        limits its own on-time."""
+        self.local_command(key, "switch", "turn_on" if on else "turn_off", {})
+
+    def local_command(self, key: str, cap: str, action: str, params: dict) -> None:
+        cmd = {"schema": 1, "command_id": str(uuid.uuid4()), "capability": cap,
+               "action": action, "params": params}
+        if self.mqtt is None or not self.mqtt_connected.is_set():
+            log.error("local command %s.%s to %s lost: broker not connected", cap, action, key)
+            return
+        asyncio.get_running_loop().create_task(
+            self.mqtt.publish(f"home/{key}/cmd", json.dumps(cmd), qos=1))
+
+    # ---- events (ADR 0012) --------------------------------------------------------------
+    def emit_event(self, key: str, type_: str, data: Optional[dict] = None,
+                   ts: Optional[str] = None) -> bool:
+        severity = self._event_severity(key, type_)
+        if severity is None:
+            log.warning("event %s from %s not allowed by contract/device", type_, key)
+            return False
+        ev = {"id": str(uuid.uuid4()), "ts": ts or iso(utcnow()), "device_key": key,
+              "type": type_, "severity": severity}
+        if data:
+            ev["data"] = data
+        log.info("event %s %s %s", key, type_, data or "")
+        self.store.enqueue("event", ev)
+        return True
+
+    def _event_severity(self, key: str, type_: str) -> Optional[str]:
+        cap, _, name = type_.partition(".")
+        spec = self.contracts.capabilities.get(cap, {}).get("events", {}).get(name)
+        if spec is None:
+            return None
+        device = self.devices.get(key)
+        if device is not None and cap not in device.get("capabilities", {}):
+            return None
+        return spec["severity"]
+
+    def _cap_cfg(self, key: str, cap: str) -> dict:
+        return (self.devices.get(key, {}).get("capabilities", {}).get(cap)) or {}
+
+    def watch_tick(self, now=None) -> None:
+        now = now or utcnow()
+        for eng in list(self.alarms.values()):
+            eng.tick(now)
+        self.gate_watch.check(now, lambda k: self._cap_cfg(k, "cover").get(
+            "left_open_after_s", DEFAULT_LEFT_OPEN_S))
+        self.climate_watch.check(
+            now, lambda k: (lambda v: v if isinstance(v, (int, float)) else None)(
+                self._known(k, "climate", "current_temp")),
+            lambda k: self._cap_cfg(k, "climate").get("no_effect_after_s", DEFAULT_NO_EFFECT_S))
+
+    async def _watch_loop(self) -> None:
+        while True:
+            try:
+                self.watch_tick()
+            except Exception:  # a watcher bug must not stop the gateway
+                log.exception("watch tick failed")
+            await asyncio.sleep(1.0)
 
     async def refresh_config(self) -> None:
         cfg = await self.backend.config()
@@ -179,8 +287,9 @@ class Gateway:
         cid, key, cap = p["command_id"], p["device_key"], p["capability"]
         prev = {a: (self.store.get_state(key, cap, a) or {}).get("value")
                 for a in self.contracts.capabilities[cap]["attributes"]}
+        unsupported = frozenset(self.devices.get(key, {}).get("unsupported") or [])
         pend = Pending(key, cap, asyncio.get_running_loop().create_future(),
-                       expectation(cap, p["action"], p["params"], prev))
+                       expectation(cap, p["action"], p["params"], prev, unsupported))
         self.pending[cid] = pend
         try:
             return await self._run(cid, p, pend)
@@ -190,11 +299,21 @@ class Gateway:
     async def _run(self, cid: str, p: dict, pend: Pending) -> str:
         cmd = {"schema": 1, "command_id": cid, "capability": p["capability"],
                "action": p["action"], "params": p["params"]}
+        engine = self.alarms.get(p["device_key"]) if p["capability"] == "alarm" else None
         try:
-            if self.mqtt is None or not self.mqtt_connected.is_set():
-                raise aiomqtt.MqttError("local broker not connected")
-            pend.published = True
-            await self.mqtt.publish(f"home/{p['device_key']}/cmd", json.dumps(cmd), qos=1)
+            if engine is not None:
+                pend.published = True
+                res = engine.command(p["action"], utcnow())
+                ack = {"status": res.status}
+                if res.reason:
+                    ack["reason"], ack["detail"] = res.reason, res.detail
+                if not pend.ack.done():
+                    pend.ack.set_result(ack)
+            else:
+                if self.mqtt is None or not self.mqtt_connected.is_set():
+                    raise aiomqtt.MqttError("local broker not connected")
+                pend.published = True
+                await self.mqtt.publish(f"home/{p['device_key']}/cmd", json.dumps(cmd), qos=1)
         except aiomqtt.MqttError as exc:
             self.store.set_outcome(cid, "failed")
             self._ack(cid, "failed", "device_offline", f"local mqtt: {exc}")
@@ -227,6 +346,11 @@ class Gateway:
         cfg = self.devices.get(p["device_key"], {}).get("capabilities", {}).get(
             p["capability"]) or {}
         timeout = cfg.get("confirm_timeout_s") or self.s.default_confirm_timeout_s
+        if p["capability"] == "alarm":
+            # armed_* is only reached after the exit delay.
+            timeout = max(timeout, int(cfg.get("exit_delay_s", 30)) + 10)
+        elif p["capability"] == "climate" and not cfg.get("confirm_timeout_s"):
+            timeout = max(timeout, 180)  # a compressor may start minutes later
         try:
             await asyncio.wait_for(pend.confirmed.wait(), timeout)
         except asyncio.TimeoutError:
@@ -251,7 +375,7 @@ class Gateway:
                     identifier="smarthome-gateway",
                 ) as client:
                     self.mqtt = client
-                    for t in ("state", "telemetry", "availability", "ack"):
+                    for t in ("state", "telemetry", "availability", "ack", "event"):
                         await client.subscribe(f"home/+/{t}", qos=1)
                     self.mqtt_connected.set()
                     delay = 1.0
@@ -279,6 +403,9 @@ class Gateway:
                 self.store.set_availability(key, status)
                 self.dirty_availability.add(key)
                 self.cloud_dirty.add(key)
+                if status == "offline":
+                    for eng in self.alarms.values():
+                        eng.on_offline(key)
             return
         try:
             msg = json.loads(raw)
@@ -293,6 +420,17 @@ class Gateway:
             return
         if kind in ("state", "telemetry"):
             self._handle_state(key, msg)
+            return
+        if kind == "event":
+            if key in self.alarms:
+                return  # virtual devices emit their own events; never accept them over MQTT
+            if not self.contracts.local["event"].is_valid(msg):
+                log.warning("invalid event message from %s", key)
+                return
+            ts = msg.get("ts")
+            if ts and abs((parse_ts(ts) - utcnow()).total_seconds()) >= 3600:
+                ts = None  # device clock is off: use hub time
+            self.emit_event(key, msg["type"], msg.get("data"), ts)
 
     def _handle_state(self, key: str, msg: dict) -> None:
         if not self.contracts.local["state"].is_valid(msg):
@@ -329,6 +467,7 @@ class Gateway:
                 accepted.setdefault(cap, {})[attr] = value
         if accepted:
             self.cloud_dirty.add(key)
+            self._watch_state(key, accepted, source, now)
         if source != "reported":
             return  # assumed values never confirm a command
         for pend in list(self.pending.values()):
@@ -336,6 +475,22 @@ class Gateway:
                 continue
             if pend.published and pend.check(accepted[pend.capability]):
                 pend.confirmed.set()
+
+    def _watch_state(self, key: str, accepted: Dict[str, Dict[str, object]], source: str,
+                     now) -> None:
+        if "climate" in accepted:
+            current = {a: (self.store.get_state(key, "climate", a) or {}).get("value")
+                       for a in ("current_temp", "mode", "target_temp")}
+            if (self.store.get_state(key, "climate", "current_temp") or {}).get("source") != "reported":
+                current["current_temp"] = None
+            self.climate_watch.update(key, accepted["climate"], current, now)
+        if source != "reported" or key in self.alarms:
+            return
+        if "cover" in accepted and "state" in accepted["cover"]:
+            self.gate_watch.update(key, accepted["cover"]["state"], now)
+        for cap, attrs in accepted.items():
+            for eng in self.alarms.values():
+                eng.on_sensor(key, cap, attrs, now)
 
     # ---- reporting / offline buffer ------------------------------------------------------
     def _value(self, st: dict) -> dict:
@@ -382,9 +537,9 @@ class Gateway:
         """Send buffered acks then reports, oldest first. False if the backend is unreachable."""
         self.queue_dirty()
         self.queue_telemetry()
-        for kind in ("ack", "report", "telemetry"):
+        for kind in ("ack", "report", "event", "telemetry"):
             while True:
-                items = self.store.peek(kind, 100 if kind == "ack" else 1)
+                items = self.store.peek(kind, 100 if kind in ("ack", "event") else 1)
                 if not items:
                     break
                 try:
@@ -392,6 +547,8 @@ class Gateway:
                         await self.backend.acks([p for _, p in items])
                     elif kind == "report":
                         await self.backend.report(items[0][1])
+                    elif kind == "event":
+                        await self.backend.events([p for _, p in items])
                     else:
                         await self.backend.telemetry(items[0][1])
                 except BackendError as exc:

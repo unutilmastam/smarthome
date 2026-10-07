@@ -362,3 +362,23 @@ def test_command_history(owner, light, hub):
         owner.post("/api/v1/commands", json=cmd(light["id"]))
     r = owner.get(f"/api/v1/devices/{light['id']}/commands", params={"limit": 2})
     assert r.json()["meta"]["total"] == 3 and len(r.json()["data"]) == 2
+
+
+def test_expire_due_never_judges_a_stale_status(owner, light, hub, dbs, database, settings):
+    """Race seen in the hub integration test: the phone's status poll had the command loaded
+    as 'sent' while the hub's ack committed 'acked'; expire_due then saw the stale 'sent'
+    object and wrongly timed it out (no_ack) seconds after creation."""
+    from app.core.contracts import load_contracts
+    from app.services.commands import expire_due
+    c = owner.post("/api/v1/commands", json=cmd(light["id"])).json()["data"]
+    hub.get("/api/v1/hub/commands")
+    cid = uuid.UUID(c["id"])
+    stale = dbs.get(Command, cid)              # this session now caches status 'sent'
+    assert stale.status == "sent"
+    with database.sessionmaker() as other:     # ack arrives through another request
+        row = other.get(Command, cid)
+        row.status, row.acked_at = "acked", utcnow()
+        other.commit()
+    assert expire_due(dbs, settings, load_contracts(str(settings.contracts_dir))) == 0
+    dbs.refresh(stale)
+    assert stale.status == "acked"

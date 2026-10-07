@@ -1,0 +1,193 @@
+# ESP32 + IR LED for an air conditioner (ARCHITECTURE 10: "Konditsioner", Faza 11, ADR 0012).
+#
+# IR is one-way: the unit never answers. So:
+#   power / mode / target_temp / fan   -> published with source "assumed" (what we SENT)
+#   current_temp / humidity             -> "reported" (DHT22 in the room)
+#   running                             -> "reported" (CT clamp on the unit's supply line):
+#                                          the ONLY real proof that the unit is on. set_power
+#                                          is confirmed by it (hub, ADR 0012).
+# Without a CT clamp, put "climate.running" in the device's `unsupported` list: commands
+# then stay "acked" and the UI says "taxminiy" (assumed).
+#
+# Inventory H-06 (brand/model) is open: `coolix` is a placeholder protocol. Change the
+# climate platform to the unit's brand (ESPHome climate_ir: daikin, fujitsu_general,
+# midea_ir, mitsubishi, tcl112, toshiba, whirlpool, ...).
+#
+# The CT clamp is clipped around ONE conductor by a qualified electrician (no wiring change).
+
+substitutions:
+  device_key: ac_bedroom
+  friendly_name: "Yotoqxona konditsioneri"
+  ir_pin: GPIO4
+  dht_pin: GPIO27
+  ct_pin: GPIO35            # ADC1 pin, through a burden resistor + bias divider
+  running_threshold_a: "0.5"
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+globals:
+  - id: last_mode           # mode to restore on "power on" (never publish "off" as a mode)
+    type: int
+    initial_value: "2"      # climate::CLIMATE_MODE_COOL
+
+remote_transmitter:
+  pin: ${ir_pin}
+  carrier_duty_percent: 50%
+
+sensor:
+  - platform: dht
+    pin: ${dht_pin}
+    model: DHT22
+    update_interval: 30s
+    temperature:
+      id: room_temp
+      internal: true
+    humidity:
+      id: room_humidity
+      internal: true
+  - platform: adc
+    id: ct_adc
+    pin: ${ct_pin}
+    attenuation: 12db
+    update_interval: never
+    internal: true
+  - platform: ct_clamp
+    sensor: ct_adc
+    id: unit_current
+    sample_duration: 200ms
+    update_interval: 5s
+    internal: true
+
+binary_sensor:
+  - platform: template
+    id: running
+    internal: true
+    lambda: |-
+      if (isnan(id(unit_current).state)) return {};
+      return id(unit_current).state > ${running_threshold_a};
+    filters:
+      - delayed_on_off: 10s   # compressor start/stop is not instant
+    on_state:
+      - script.execute: publish_reported
+
+climate:
+  - platform: coolix
+    id: ac
+    sensor: room_temp
+    internal: true
+    supports_heat: true
+    supports_cool: true
+
+script:
+  - id: publish_assumed
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            auto mode_name = [](int m) -> const char * {
+              switch (m) {
+                case climate::CLIMATE_MODE_COOL: return "cool";
+                case climate::CLIMATE_MODE_HEAT: return "heat";
+                case climate::CLIMATE_MODE_DRY: return "dry";
+                case climate::CLIMATE_MODE_FAN_ONLY: return "fan";
+                default: return "auto";
+              }
+            };
+            auto fan_name = [](optional<climate::ClimateFanMode> f) -> const char * {
+              if (!f.has_value()) return "auto";
+              switch (*f) {
+                case climate::CLIMATE_FAN_LOW: return "low";
+                case climate::CLIMATE_FAN_MEDIUM: return "medium";
+                case climate::CLIMATE_FAN_HIGH: return "high";
+                default: return "auto";
+              }
+            };
+            root["schema"] = 1;
+            root["source"] = "assumed";   // IR: what we sent, not what the unit did
+            root["states"]["climate"]["power"] = id(ac).mode != climate::CLIMATE_MODE_OFF;
+            root["states"]["climate"]["mode"] = mode_name(id(last_mode));
+            root["states"]["climate"]["target_temp"] = id(ac).target_temperature;
+            root["states"]["climate"]["fan"] = fan_name(id(ac).fan_mode);
+  - id: publish_reported
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/telemetry
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            if (!isnan(id(room_temp).state)) root["states"]["climate"]["current_temp"] = id(room_temp).state;
+            if (!isnan(id(room_humidity).state)) root["states"]["climate"]["humidity"] = id(room_humidity).state;
+            if (id(running).has_state()) root["states"]["climate"]["running"] = id(running).state;
+            if (root["states"].isNull()) root["states"].to<JsonObject>();
+
+interval:
+  - interval: 30s
+    then:
+      - script.execute: publish_reported
+
+mqtt:
+  on_connect:
+    - script.execute: publish_assumed
+    - script.execute: publish_reported
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "climate") { ack("rejected", "invalid_params"); return; }
+            JsonObject p = x["params"].as<JsonObject>();
+            auto call = id(ac).make_call();
+            if (act == "set_power") {
+              if (!p["power"].is<bool>()) { ack("rejected", "invalid_params"); return; }
+              call.set_mode(p["power"].as<bool>() ? (climate::ClimateMode) id(last_mode)
+                                                  : climate::CLIMATE_MODE_OFF);
+            } else if (act == "set_target_temp") {
+              const float t = p["target_temp"] | -1.0f;
+              if (t < 16 || t > 30) { ack("rejected", "invalid_params"); return; }
+              call.set_target_temperature(t);
+            } else if (act == "set_mode") {
+              const std::string m = p["mode"] | "";
+              climate::ClimateMode mode;
+              if (m == "cool") mode = climate::CLIMATE_MODE_COOL;
+              else if (m == "heat") mode = climate::CLIMATE_MODE_HEAT;
+              else if (m == "dry") mode = climate::CLIMATE_MODE_DRY;
+              else if (m == "fan") mode = climate::CLIMATE_MODE_FAN_ONLY;
+              else if (m == "auto") mode = climate::CLIMATE_MODE_HEAT_COOL;
+              else if (m == "off") mode = climate::CLIMATE_MODE_OFF;
+              else { ack("rejected", "invalid_params"); return; }
+              if (mode != climate::CLIMATE_MODE_OFF) id(last_mode) = (int) mode;
+              // Changing the mode of a unit that is off does not switch it on.
+              if (id(ac).mode != climate::CLIMATE_MODE_OFF || mode == climate::CLIMATE_MODE_OFF)
+                call.set_mode(mode);
+            } else if (act == "set_fan") {
+              const std::string f = p["fan"] | "";
+              if (f == "auto") call.set_fan_mode(climate::CLIMATE_FAN_AUTO);
+              else if (f == "low") call.set_fan_mode(climate::CLIMATE_FAN_LOW);
+              else if (f == "medium") call.set_fan_mode(climate::CLIMATE_FAN_MEDIUM);
+              else if (f == "high") call.set_fan_mode(climate::CLIMATE_FAN_HIGH);
+              else { ack("rejected", "invalid_params"); return; }
+            } else { ack("rejected", "invalid_params"); return; }
+            ack("acked", nullptr);    // IR sent; whether the unit obeyed is shown by "running"
+            call.perform();
+            id(publish_assumed).execute();

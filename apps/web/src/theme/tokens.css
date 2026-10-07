@@ -381,3 +381,57 @@ fieldset legend { font-size: 14px; color: var(--muted); padding: 0; margin-botto
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
+
+/* ---------- security (ADR 0012) ---------- */
+.security-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); align-items: start; }
+.alarm-card { gap: 14px; }
+.alarm-ring { display: grid; justify-items: center; gap: 8px; padding: 10px 0 4px; text-align: center; --ring: var(--unknown); }
+.alarm-ring .ring { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--ring) 70%, #fff), var(--ring));
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--ring) 16%, transparent), 0 14px 34px color-mix(in srgb, var(--ring) 45%, transparent);
+  transition: background .4s, box-shadow .4s; }
+.alarm-ring strong { font-size: 20px; }
+.alarm-ring .zone { font-size: 14px; color: var(--danger); font-weight: 700; }
+.alarm-ring[data-state="disarmed"] { --ring: #94a3b8; }
+.alarm-ring[data-state="arming"] { --ring: var(--pending); }
+.alarm-ring[data-state="arming"] .ring { animation: breathe 1.6s ease-in-out infinite; }
+.alarm-ring[data-state="armed_away"], .alarm-ring[data-state="armed_home"] { --ring: var(--ok); }
+.alarm-ring[data-state="pending"] { --ring: var(--pending); }
+.alarm-ring[data-state="pending"] .ring { animation: breathe .8s ease-in-out infinite; }
+.alarm-ring[data-state="triggered"] { --ring: var(--danger); }
+.alarm-ring[data-state="triggered"] .ring { animation: alarm-flash .6s steps(2) infinite; }
+.alarm-ring[data-pending="true"] .ring { outline: 3px dashed color-mix(in srgb, var(--pending) 70%, transparent); outline-offset: 6px; }
+.alarm-actions { display: grid; grid-template-columns: 1fr 1fr; }
+.alarm-actions button:last-child { grid-column: 1 / -1; }
+.alarm-banner { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); margin: 0 0 12px; }
+.alarm-banner.state-triggered, .alarm-banner.state-pending { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); animation: breathe 1.2s ease-in-out infinite; }
+.alarm-banner.state-armed_away svg, .alarm-banner.state-armed_home svg { color: var(--ok); }
+.zones { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.zone { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.zone .ico { width: 38px; height: 38px; border-radius: 12px; }
+.zone-body { flex: 1; min-width: 120px; display: grid; }
+.zone > [data-testid^="value-"] { flex: none; }
+.zone.zone-open { outline: 2px solid color-mix(in srgb, var(--danger) 55%, transparent); }
+.zone.missing { color: var(--danger); }
+
+/* ---------- event feed ---------- */
+.events { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.event { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--border); --sev: var(--assumed); }
+.event:last-child { border-bottom: 0; }
+.event .ico { width: 38px; height: 38px; border-radius: 12px; flex: none; color: var(--sev); background: color-mix(in srgb, var(--sev) 14%, transparent); }
+.event-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.event-body strong { font-size: 15px; }
+.event-body a { color: inherit; }
+.sev-warning { --sev: var(--pending); }
+.sev-critical { --sev: var(--danger); }
+.event.sev-critical { background: color-mix(in srgb, var(--danger) 6%, transparent); border-radius: var(--radius-sm); }
+.event.sev-critical .ico { animation: pulse-sev 1.6s infinite; }
+.sev-chip { flex: none; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; color: var(--sev); background: color-mix(in srgb, var(--sev) 14%, transparent); }
+@media (max-width: 420px) { .sev-chip { display: none; } }
+.danger-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px;
+  border-color: color-mix(in srgb, var(--t-water) 45%, transparent); background: color-mix(in srgb, var(--t-water) 12%, var(--surface)); }
+.danger-banner svg { color: var(--t-water); }
+
+@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes alarm-flash { 0% { filter: brightness(1.25); } 100% { filter: brightness(.8); } }
+@keyframes pulse-sev { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sev) 60%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }

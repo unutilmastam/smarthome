@@ -27,7 +27,7 @@ function CameraCard({ cam, canLive }: { cam: CameraView; canLive: boolean }) {
       <div className="row spread"><h3>{cam.name}</h3>
         <Badge kind={avail === "online" ? "ok" : avail === "offline" ? "failed" : "unknown"} label={t(`availability.${avail}`)} />
       </div>
-      {cam.status && Object.entries(cam.status).map(([a, v]) => <ValueView key={a} label={t(`attr.${a}`)} value={v} />)}
+      {cam.status && Object.entries(cam.status).map(([a, v]) => <ValueView key={a} attr={a} label={t(`attr.${a}`)} value={v} />)}
       {typeof disk?.value === "number" && disk.value >= 85 && <p className="error">{t("cameras.diskWarning", { pct: disk.value })}</p>}
       {!canLive ? <p className="muted">{t("cameras.noAccess")}</p> : !access ? (
         <button className="primary" onClick={async () => {

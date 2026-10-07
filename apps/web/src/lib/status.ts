@@ -28,11 +28,15 @@ export function commandBadge(status: CommandStatus): BadgeKind {
 /** Displays a value WITHOUT inventing anything: unknown/not_supported have no number. */
 export type T = (k: string, o?: Record<string, unknown>) => string;
 
-export function formatValue(v: Value | undefined, t: T): string {
+export function formatValue(v: Value | undefined, t: T, attr?: string): string {
   if (v?.quality === "not_supported") return t("status.unsupported");
   if (!v || v.quality === "unknown" || v.value === null || v.value === undefined) return "—";
   const x = v.value;
-  if (typeof x === "boolean") return x ? t("value.on") : t("value.off");
+  if (typeof x === "boolean") {
+    const plain = x ? t("value.on") : t("value.off");
+    // Attribute-specific words ("To'silgan", "Harakat bor") instead of a generic on/off.
+    return attr ? t(`bool.${attr}.${x}`, { defaultValue: plain }) : plain;
+  }
   if (typeof x === "number") return `${Number.isInteger(x) ? x : x.toFixed(2).replace(/\.?0+$/, "")}${v.unit ? " " + v.unit : ""}`;
   if (Array.isArray(x)) return x.join(", ");
   return t(`enum.${String(x)}`, { defaultValue: String(x) });

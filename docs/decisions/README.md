@@ -19,6 +19,7 @@ Qabul qilingan ADR o'zgartirilmaydi — yangi ADR bilan almashtiriladi.
 | [0009](0009-web-token-storage.md) | PWA: access xotirada, refresh `HttpOnly` cookie | qabul qilingan |
 | [0010](0010-esphome-speaks-local-contract.md) | ESPHome lokal shartnomani o'zi gapiradi (Hub adapteri yo'q) | qabul qilingan |
 | [0011](0011-automatic-deploy-and-expand-only-migrations.md) | Avtomatik deploy, zaxira, avtomatik qaytish, expand-only migratsiyalar | qabul qilingan |
+| [0012](0012-events-alarm-on-hub-and-feedback-attributes.md) | Voqealar oqimi, Hub'dagi xavfsizlik tizimi, qaytar aloqa atributlari (fotoelement, tok, oqim) | qabul qilingan |
 
 ## Shablon
 

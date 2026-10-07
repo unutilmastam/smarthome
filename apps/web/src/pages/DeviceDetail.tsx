@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useDevice, useDeviceCommands, useRooms } from "../api/hooks";
+import { useDevice, useDeviceCommands, useEvents, useRooms } from "../api/hooks";
+import { EventList } from "../components/EventFeed";
 import { useCanConfigure } from "../components/AddFlow";
 import { EditDeviceSheet } from "../components/AddForms";
 import { AvailabilityBadge, DeviceIcon, deviceClasses } from "../components/DeviceCard";
@@ -20,6 +21,7 @@ export function DeviceDetail() {
   const device = useDevice(id, useLive());
   const commands = useDeviceCommands(id);
   const rooms = useRooms(home?.id);
+  const events = useEvents(home?.id, { device_id: id, limit: 20 });
   const canEdit = useCanConfigure();
   const [editing, setEditing] = useState(false);
   const created = (useLocation().state as { created?: boolean } | null)?.created;
@@ -52,9 +54,15 @@ export function DeviceDetail() {
       <div className="card">
         <h3>{t("devices.attributes")}</h3>
         {Object.entries(d.capabilities).map(([cap, v]) => Object.entries(v.attributes).map(([a, val]) => (
-          <ValueView key={`${cap}.${a}`} label={`${t(`cap.${cap}`)} · ${t(`attr.${a}`)}`} value={val} />
+          <ValueView key={`${cap}.${a}`} attr={a} label={`${t(`cap.${cap}`)} · ${t(`attr.${a}`)}`} value={val} />
         )))}
       </div>
+      {!!events.data?.length && (
+        <div className="card">
+          <h3>{t("events.title")}</h3>
+          <EventList events={events.data} showDevice={false} />
+        </div>
+      )}
       <div className="card">
         <h3>{t("command.history")}</h3>
         {!commands.data?.length ? <p className="muted">{t("command.noHistory")}</p> : (

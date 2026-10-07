@@ -105,7 +105,11 @@
         "target_temp": { "type": "number", "minimum": 16, "maximum": 30, "unit": "°C" },
         "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] },
         "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] },
-        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" },
+        "running": {
+          "type": "boolean",
+          "description": "Unit really draws current (CT clamp on its supply). The only real feedback for IR units; confirms set_power."
+        }
       },
       "actions": {
         "set_power": {
@@ -129,6 +133,24 @@
             "properties": { "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] } }
           }
         }
+      },
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "no_effect_after_s": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 7200,
+            "description": "Hub raises climate.no_effect when, after power on, room temperature has not moved toward the target within this time (default 900)."
+          }
+        }
+      },
+      "events": {
+        "no_effect": {
+          "severity": "warning",
+          "description": "Room temperature did not move toward the target (hub). A hint, never a confirmation."
+        }
       }
     },
     "cover": {
@@ -137,14 +159,42 @@
       "risk": "high",
       "attributes": {
         "position": { "type": "integer", "minimum": 0, "maximum": 100, "unit": "%" },
-        "state": { "type": "string", "enum": ["open", "closed", "opening", "closing", "stopped", "unknown"] }
+        "state": { "type": "string", "enum": ["open", "closed", "opening", "closing", "stopped", "unknown"] },
+        "obstructed": {
+          "type": "boolean",
+          "description": "Photocell beam interrupted. Display only: stopping/reversing is done by the gate controller hardware; firmware additionally refuses 'close' while obstructed."
+        }
       },
       "actions": {
         "open": { "params": { "type": "object", "additionalProperties": false } },
         "close": { "params": { "type": "object", "additionalProperties": false } },
         "stop": { "params": { "type": "object", "additionalProperties": false } }
       },
-      "confirm_attribute": "state"
+      "confirm_attribute": "state",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "left_open_after_s": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "Hub raises cover.left_open when not closed for this long (default 600)."
+          }
+        }
+      },
+      "events": {
+        "left_open": { "severity": "warning", "description": "Not closed for longer than left_open_after_s (hub)." },
+        "obstructed": { "severity": "warning", "description": "Photocell interrupted (firmware)." },
+        "travel_timeout": {
+          "severity": "warning",
+          "description": "End reed not reached within max travel time (firmware)."
+        },
+        "sensor_conflict": {
+          "severity": "critical",
+          "description": "Open and closed reed both active: commands refused (firmware)."
+        }
+      }
     },
     "lock": {
       "title": "Lock",
@@ -209,7 +259,22 @@
         },
         "close": { "params": { "type": "object", "additionalProperties": false } }
       },
-      "confirm_attribute": "open"
+      "confirm_attribute": "open",
+      "events": {
+        "runtime_limit": { "severity": "info", "description": "Closed by firmware at max_runtime_s." },
+        "no_flow": {
+          "severity": "warning",
+          "description": "Open but no flow: closed by firmware (dry-run protection)."
+        },
+        "flow_while_closed": {
+          "severity": "critical",
+          "description": "Flow measured while the valve is closed (leak / stuck valve)."
+        },
+        "emergency_stop": {
+          "severity": "warning",
+          "description": "Physical emergency button pressed: valve closed by firmware."
+        }
+      }
     },
     "camera": {
       "title": "Camera (metadata only, video stays at home)",
@@ -221,6 +286,78 @@
         "disk_usage_pct": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
       },
       "actions": {}
+    },
+    "alarm": {
+      "title": "Security system (runs on the hub)",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "state": {
+          "type": "string",
+          "enum": ["disarmed", "arming", "armed_away", "armed_home", "pending", "triggered"]
+        },
+        "alert_zone": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "device_key of the zone that caused pending/triggered; empty otherwise."
+        }
+      },
+      "actions": {
+        "arm_away": { "params": { "type": "object", "additionalProperties": false } },
+        "arm_home": { "params": { "type": "object", "additionalProperties": false } },
+        "disarm": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "state",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zones"],
+        "properties": {
+          "zones": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["device_key", "capability", "mode"],
+              "properties": {
+                "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+                "capability": { "enum": ["contact", "motion"] },
+                "mode": {
+                  "enum": ["entry", "instant"],
+                  "description": "entry: entry delay before triggering; instant: triggers at once."
+                },
+                "home": {
+                  "type": "boolean",
+                  "description": "Also active in armed_home (perimeter). Default true for contact, false for motion."
+                }
+              }
+            }
+          },
+          "sirens": {
+            "type": "array",
+            "maxItems": 8,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+            "description": "device_keys with a switch capability."
+          },
+          "exit_delay_s": { "type": "integer", "minimum": 0, "maximum": 300 },
+          "entry_delay_s": { "type": "integer", "minimum": 0, "maximum": 300 },
+          "siren_max_s": { "type": "integer", "minimum": 10, "maximum": 900 }
+        }
+      },
+      "events": {
+        "armed": { "severity": "info" },
+        "disarmed": { "severity": "info" },
+        "arm_refused": { "severity": "warning", "description": "A zone was open when arming." },
+        "entry_delay": { "severity": "warning" },
+        "triggered": { "severity": "critical" },
+        "sensor_offline": { "severity": "warning", "description": "A zone sensor went offline while armed." },
+        "siren_timeout": {
+          "severity": "info",
+          "description": "Siren stopped at siren_max_s; the alarm stays triggered until disarmed."
+        }
+      }
     }
   }
 }

@@ -16,7 +16,7 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 8 | Birinchi real qurilma (ESP32 rele) | qisman: proshivka, o'rnatish yo'riqnomasi va UI tayyor; **apparatda sinalmagan** (`[REAL]` jadval bo'sh) |
 | 9 | Elektr monitoring | qisman: `[SIM]` tugadi; haqiqiy hisoblagich bilan solishtirilmagan (`[REAL]` yo'q) |
 | 10 | Kameralar (lokal) | qisman: bulut tomoni va Hub monitoringi `[SIM]`; Frigate va kameralar apparatda sinalmagan |
-| 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | boshlanmagan |
+| 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | qisman: shartnoma, Hub, proshivka, UI va nosozlik testlari `[SIM]` tugadi; **apparatda sinalmagan** (`[REAL]` jadvallar bo'sh, inventar H-05/H-06/H-11/H-13 ochiq) |
 
 ---
 
@@ -690,3 +690,107 @@ Testlar:
 - Playwright E2E: 8 o'tdi (telefon + iPad) `[SIM]`. Yangi stsenariy: bo'lim qo'shish → qurilma qo'shish → "Noma'lum" holat → olib tashlash.
 
 Sinalmagan: haqiqiy telefon va iPad'da (faqat emulyatsiya).
+
+---
+
+## Faza 11 — Darvoza, konditsioner, xavfsizlik, sug'orish — 2026-10-07
+Holat: qisman.
+- `[SIM]` bo'yicha tugadi: har bir tur uchun shartnoma → proshivka → Hub → simulyator → UI → nosozlik testi.
+- `[REAL]` yo'q: apparat ma'lum emas (inventar H-05, H-06, H-11, H-13). Firmware C++ kompilyatsiyasi lokal tekshirilmadi (pastga qarang).
+
+Qilingan ishlar:
+
+**Umumiy (ADR 0012)**
+- Voqealar oqimi:
+  - qurilma yoki Hub `home/{key}/event` ga yozadi;
+  - gateway voqeani shartnoma bo'yicha tekshiradi va unga `id` beradi;
+  - internet bo'lmasa, voqea outbox'da kutadi;
+  - so'ng `POST /hub/events` orqali `events` jadvaliga tushadi (180 kun saqlanadi);
+  - foydalanuvchi uni `GET /homes/{id}/events` va "Voqealar" sahifasida ko'radi.
+- Voqea turlari va ularning muhimligi (`severity`) `capabilities.json` da belgilanadi. Hub yuborgan muhimlik inobatga olinmaydi.
+- `capabilities.json` da har bir capability uchun `config` sxemasi bor. Backend qurilma sozlamalarini shu sxema bilan tekshiradi.
+
+**Darvoza**
+- `cover.obstructed` (fotoelement) atributi qo'shildi.
+- Proshivka `gate.yaml`:
+  - ochiq/yopiq holat faqat gerkondan olinadi;
+  - ikkala gerkon bir vaqtda faol bo'lsa → `unknown`, buyruqlar rad etiladi, `cover.sensor_conflict` voqeasi;
+  - nur to'silgan paytda "yopish" rad etiladi;
+  - darvoza `max_travel_s` ichida oxiriga yetmasa → `cover.travel_timeout`.
+- Fotoelement darvoza blokida apparat sifatida ishlashda davom etadi.
+- Hub'da "ochiq qoldi" kuzatuvchisi bor (`left_open_after_s`, standart 600 s). U bitta ochiq turish davri uchun bir marta xabar beradi. `unknown` holat "ochiq" deb hisoblanmaydi.
+
+**Konditsioner**
+- `climate.running` atributi qo'shildi: CT tok qisqichi orqali o'lchanadi.
+- `set_power` faqat `running` bilan `confirmed` bo'ladi. CT bo'lmasa, buyruq halol tarzda `acked` da qoladi.
+- IR signal yetib bormasa (`ir_blocked`) buyruq tasdiqlanmaydi.
+- Hub'da "ta'sir yo'q" kuzatuvchisi bor: harorat 15 daqiqada ≥ 0.5 °C o'zgarmasa, `climate.no_effect` voqeasi chiqadi. Bu faqat ogohlantirish, tasdiq emas. Hisoblash birinchi ma'lum haroratdan boshlanadi.
+- Proshivka: `ir-climate.yaml` (IR + DHT22 + CT).
+
+**Xavfsizlik**
+- Yangi `alarm` capability qo'shildi (`control_access`, high risk — PIN so'raladi).
+- Dvigatel Hub'da ishlaydi (`gateway/alarm.py`) va internetsiz ham ishlaydi:
+  - zonalar: kirish (kechikish bilan) yoki darhol;
+  - "Uydaman" rejimi: faqat perimetr;
+  - chiqish va kirish kechikishlari;
+  - ochiq zona bo'lsa yoqishdan bosh tortadi;
+  - signal bo'lsa sirena yoqiladi va `siren_max_s` dan keyin to'xtaydi;
+  - zona datchigi oflayn bo'lsa xabar beradi;
+  - holat Hub qayta yongandan keyin ham saqlanadi.
+- Proshivka: `security-sensor.yaml` va `siren.yaml` (`max_on_s` proshivkada).
+- UI: "Xavfsizlik" sahifasi (holat halqasi, 3 ta tugma, zonalar, sozlash oynasi, voqealar). Bosh sahifada holat banneri.
+
+**Sug'orish**
+- `valve.open` buyrug'i oqim datchigi bo'lsa `open` **va** `flow > 0` bilan tasdiqlanadi.
+- Proshivka `irrigation-valve.yaml`:
+  - `max_runtime_s` dan uzun so'rov kesiladi (`valve.runtime_limit`);
+  - quruq ishlash himoyasi (`valve.no_flow`);
+  - yopiq klapandan oqim (`valve.flow_while_closed`);
+  - favqulodda tugma (`valve.emergency_stop`);
+  - tok uzilsa — klapan YOPIQ.
+- UI: "Hammasini to'xtatish" banneri. U faqat ochiq ekani **tasdiqlangan** klapanlarga yopish buyrug'ini yuboradi.
+
+**Topilgan va tuzatilgan xato**
+- Backend `expire_due` da eski (sessiya keshidagi) holat bilan ishlaganligi sababli, ack kelgan buyruq soniyalar ichida noto'g'ri `timeout/no_ack` bo'lib qolardi.
+- Bu Hub integratsiya testida kamdan-kam paydo bo'ladigan nosozlikdan topildi.
+- Tuzatish: `populate_existing` va vaqtni Python'da qayta tekshirish. Regressiya testi tuzatishsiz yiqiladi, tuzatish bilan o'tadi.
+
+Yaratilgan/o'zgartirilgan fayllar:
+- `packages/contracts/capabilities.json`, `schemas/{capabilities,local-mqtt,hub-events}.schema.json`;
+- `docs/decisions/0012-*.md`;
+- `services/backend/`: `models/event.py`, `services/events.py`, `api/v1/events.py`, `api/v1/hub.py`, migratsiya `0006_events` (expand), `services/devices.py`, `services/commands.py`;
+- `services/hub/gateway/`: `alarm.py`, `watchers.py`, `core.py`, `expectations.py`; `simulator/devices.py`; `mosquitto/acl` (`event`);
+- `devices/esphome/`: `gate.yaml`, `ir-climate.yaml`, `irrigation-valve.yaml`, `security-sensor.yaml`, `siren.yaml`;
+- `apps/web/`: `pages/{Security,Events}.tsx`, `components/{EventFeed,IrrigationStop}.tsx`, `AlarmCtl`, atributga xos so'zlar (`To'silgan!`, `Ishlayapti`);
+- `docs/hardware/tests/{gate,climate-ir,irrigation,security}.md` — `[REAL]` jadvallar (bo'sh).
+
+Testlar:
+- Contracts: `pytest packages/contracts` → 66 passed.
+- Backend: `cd services/backend && pytest` → 163 passed. PostgreSQL migratsiya testi → 2 passed. Expand-only → OK (6 ta migratsiya).
+- Hub: `cd services/hub && pytest` → 66 passed `[SIM]`. Shulardan 20 tasi alarm dvigateli va kuzatuvchilarning unit testlari, 11 tasi to'liq zanjirda nosozlik stsenariylari:
+  - fotoelement;
+  - gerkon ziddiyati va yurish vaqti tugashi;
+  - "ochiq qoldi";
+  - CT bilan tasdiq;
+  - IR yetmasligi va "ta'sir yo'q";
+  - suv yo'q;
+  - proshivka limiti bulutdagi sozlamadan ustun;
+  - oqish va favqulodda tugma;
+  - signalizatsiya: kirish kechikishi → sirena → o'chirish;
+  - ochiq derazada yoqishdan bosh tortish;
+  - internetsiz signal.
+- Web: `npx vitest run` → 42 passed. Playwright → 10 passed (telefon + iPad), shu jumladan signalizatsiyani UI'dan sozlash, PIN bilan yoqish/o'chirish va voqealar tasmasi `[SIM]`.
+- Deploy skripti: 5 passed.
+- Proshivka: `esphome config` → 5 ta yangi YAML valid. `esphome compile` lokal **bajarilmadi**: tarmoq proksisi PlatformIO registry'ni bloklaydi (403). Kompilyatsiyani CI'dagi `firmware` job bajaradi; natijasi CI'da ko'rinadi.
+
+Hal qilinmagan xavflar:
+- Proshivkalar apparatda sinalmagan. Pinlar, IR protokoli (`coolix` — vaqtinchalik) va oqim datchigi koeffitsienti taxminiy.
+- Sirena va signalizatsiya hozircha faqat ilovada va voqealar tasmasida ko'rinadi. Telegram/Push xabarnomalari Faza 13 da qo'shiladi; ungacha signal haqida telefonga **xabar kelmaydi**.
+- Signalizatsiyada zona chetlab o'tish (bypass) yo'q: ochiq zona bilan yoqib bo'lmaydi.
+
+Tasdiqlanmagan taxminlar:
+- Darvoza blokida alohida OPEN/CLOSE/STOP kirishlari bor (H-05).
+- Konditsioner IR bilan boshqariladi (H-06).
+- Klapan 24 V AC, oqim datchigi YF-S201 (H-11).
+
+Keyingi faza: 12 — Avtomatika (Hub'da).

@@ -44,7 +44,20 @@
               "properties": { "params": { "type": "object" } }
             }
           },
-          "confirm_attribute": { "type": "string" }
+          "confirm_attribute": { "type": "string" },
+          "config": {
+            "type": "object",
+            "description": "JSON Schema for capability-specific device config. Common keys (report_interval_s, max_runtime_s, confirm_timeout_s, invert) are always allowed."
+          },
+          "events": {
+            "type": "object",
+            "description": "Events a device/hub may publish for this capability (home/{key}/event, type '<capability>.<name>').",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+            "additionalProperties": {
+              "type": "object", "required": ["severity"], "additionalProperties": false,
+              "properties": { "severity": { "enum": ["info", "warning", "critical"] }, "description": { "type": "string" } }
+            }
+          }
         }
       }
     }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Command, Device, EnergySummary, Home, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
+import type { Command, Device, EnergySummary, Home, HomeEvent, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
 
 /** Device state refresh when realtime is not available (ARCHITECTURE 2.A: 3 s). */
 export const POLL_MS = 3000;
@@ -53,3 +53,13 @@ export const useEnergy = (home?: string, period: "day" | "month" = "day") =>
 export const useTelemetry = (device?: string, metric = "power_meter.power", hours = 6) =>
   useQuery({ queryKey: ["telemetry", device ?? "", metric, hours], enabled: !!device, refetchInterval: 60_000,
     queryFn: () => api.get<TelemetryPoint[]>(`/devices/${device}/telemetry?metric=${metric}&resolution=1m&hours=${hours}`) });
+
+/** Event feed (ADR 0012). Refreshed every 10 s; newest first. */
+export const useEvents = (home?: string, filter: { severity?: string; capability?: string; device_id?: string; limit?: number } = {}) => {
+  const qs = new URLSearchParams({ limit: String(filter.limit ?? 50) });
+  if (filter.severity) qs.set("severity", filter.severity);
+  if (filter.capability) qs.set("capability", filter.capability);
+  if (filter.device_id) qs.set("device_id", filter.device_id);
+  return useQuery({ queryKey: ["events", home ?? "", qs.toString()], enabled: !!home, refetchInterval: 10_000,
+    queryFn: () => api.get<HomeEvent[]>(`/homes/${home}/events?${qs}`) });
+};

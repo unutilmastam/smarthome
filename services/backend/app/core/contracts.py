@@ -47,6 +47,22 @@ class Contracts:
             self._param_validators[key] = Draft202012Validator(spec)
         return self._param_validators[key]
 
+    def config_validator(self, capability: str) -> Optional[Draft202012Validator]:
+        """Capability-specific device config schema (ADR 0012), if the contract has one."""
+        spec = self.capabilities[capability].get("config")
+        if spec is None:
+            return None
+        key = (capability, "#config")
+        if key not in self._param_validators:
+            self._param_validators[key] = Draft202012Validator(spec)
+        return self._param_validators[key]
+
+    def event_severity(self, event_type: str) -> Optional[str]:
+        """'cover.left_open' -> 'warning'; None if the contract does not list it."""
+        cap, _, name = event_type.partition(".")
+        spec = self.capabilities.get(cap, {}).get("events", {}).get(name)
+        return spec["severity"] if spec else None
+
     def schema_path(self, name: str) -> Path:
         return self.dir / "schemas" / name
 

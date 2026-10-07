@@ -241,11 +241,17 @@ def expire_due(db: Session, settings: Settings, contracts: Contracts,
         Command.status == "acked",
     ))
     n = 0
-    for c in db.scalars(q).all():
+    # populate_existing: a Command already loaded in this session (e.g. the caller just read
+    # it) must be refreshed, otherwise a concurrent ack would be judged on a stale status.
+    for c in db.scalars(q.execution_options(populate_existing=True)).all():
         if c.status == "queued":
+            if c.expires_at > now:
+                continue
             n += transition(db, c, "expired", "system", reason="expired",
                             detail="not picked up by hub before expires_at", now=now)
         elif c.status == "sent":
+            if c.expires_at > now - timedelta(seconds=settings.command_ack_grace_s):
+                continue
             n += transition(db, c, "timeout", "system", reason="no_ack",
                             detail="hub received the command but sent no ack", now=now)
         elif c.status == "acked":

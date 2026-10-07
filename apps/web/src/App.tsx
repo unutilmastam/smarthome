@@ -12,7 +12,9 @@ import { HubStatus } from "./pages/HubStatus";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
 import { More } from "./pages/More";
+import { Events } from "./pages/Events";
 import { Rooms } from "./pages/Rooms";
+import { Security } from "./pages/Security";
 import { Settings } from "./pages/Settings";
 
 export function App() {
@@ -35,6 +37,8 @@ export function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="members" element={<Members />} />
           <Route path="more" element={<More />} />
+          <Route path="security" element={<Security />} />
+          <Route path="events" element={<Events />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

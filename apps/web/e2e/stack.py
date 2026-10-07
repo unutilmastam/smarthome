@@ -78,7 +78,8 @@ def main():
     mp = shutil.which("mosquitto_passwd") or "/usr/bin/mosquitto_passwd"
     subprocess.run([mp, "-b", str(passwd), "gateway", GW_PW], check=True)
     subprocess.run([mp, "-b", str(passwd), "garden_lights", SIM_PW], check=True)
-    subprocess.run([mp, "-b", str(passwd), "front_gate", SIM_PW], check=True)
+    for key in ("front_gate", "front_door", "siren"):
+        subprocess.run([mp, "-b", str(passwd), key, SIM_PW], check=True)
     conf = tmp / "mosquitto.conf"
     conf.write_text(f"listener {mport} 127.0.0.1\nallow_anonymous false\npassword_file {passwd}\n"
                     f"acl_file {HUB / 'mosquitto' / 'acl'}\npersistence false\n"
@@ -108,7 +109,8 @@ def main():
     # 4. Simulated devices and the hub gateway.
     sim = tmp / "devices.json"
     sim.write_text('[{"type":"light","key":"garden_lights"},'
-                   '{"type":"gate","key":"front_gate","travel_time_s":2}]')
+                   '{"type":"gate","key":"front_gate","travel_time_s":2},'
+                   '{"type":"contact","key":"front_door"},{"type":"siren","key":"siren"}]')
     start([PY, "-m", "simulator", str(sim)], cwd=HUB,
           env={"MQTT_HOST": "127.0.0.1", "MQTT_PORT": str(mport), "SIM_DEVICE_PASSWORD": SIM_PW})
     start([PY, "-m", "gateway"], cwd=HUB, env={
@@ -142,7 +144,9 @@ user.pin_hash = hash_secret("4821")
 token = "hub_" + new_token(32)
 db.add(Hub(id=uuid.uuid4(), home_id=home.id, name="Asosiy hub", token_hash=sha256_hex(token)))
 for key, name, caps in (("garden_lights", "Bog' chiroqlari", {"switch": {}, "dimmer": {}}),
-                        ("front_gate", "Darvoza", {"cover": {"confirm_timeout_s": 10}})):
+                        ("front_gate", "Darvoza", {"cover": {"confirm_timeout_s": 10}}),
+                        ("front_door", "Kirish eshigi", {"contact": {}}),
+                        ("siren", "Sirena", {"switch": {}})):
     d = Device(id=uuid.uuid4(), home_id=home.id, key=key, name=name, adapter="esphome",
                protocol="mqtt", unsupported=[], availability="unknown")
     d.capabilities = [DeviceCapability(capability=c, config_json=cfg) for c, cfg in caps.items()]

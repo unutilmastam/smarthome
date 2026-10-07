@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/capabilities.schema.json",
+  "title": "Capability registry format (capabilities.json)",
+  "type": "object",
+  "required": ["version", "risk_levels", "capabilities"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "description": { "type": "string" },
+    "risk_levels": {
+      "type": "object",
+      "required": ["low", "medium", "high"],
+      "additionalProperties": { "type": "string" }
+    },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["title", "permission", "risk", "attributes", "actions"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "permission": {
+            "enum": [
+              "view", "control_basic", "control_access", "control_power",
+              "camera_live", "camera_archive", "configure", "manage_users", "view_audit"
+            ]
+          },
+          "risk": { "enum": ["low", "medium", "high"] },
+          "attributes": {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+            "additionalProperties": { "type": "object" }
+          },
+          "actions": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+            "additionalProperties": {
+              "type": "object",
+              "required": ["params"],
+              "properties": { "params": { "type": "object" } }
+            }
+          },
+          "confirm_attribute": { "type": "string" }
+        }
+      }
+    }
+  }
+}

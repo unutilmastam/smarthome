@@ -57,13 +57,13 @@ Tugash mezoni: hujjatlar bor, kod yo'q.
 **Maqsad:** bo'sh, lekin to'g'ri tuzilgan va CI'dan o'tadigan repo.
 
 Vazifalar:
-- [ ] ARCHITECTURE.md 14-bo'limdagi papka tuzilmasi.
-- [ ] `docs/spec/capabilities.json` → `packages/contracts/capabilities.json`. Qo'shimcha JSON Schema'lar `packages/contracts/schemas/`: `value`, `command-envelope`, `ack`, `state-report` (ARCHITECTURE 4.2–4.4).
-- [ ] `packages/contracts/tests/`: barcha schema'lar o'zi to'g'ri JSON Schema ekanini tekshiruvchi test; har bir capability'da `permission`, `risk`, `attributes`, `actions` borligi.
-- [ ] `services/backend/` skeleti: `pyproject.toml` yoki `requirements.txt` (versiyalar qotirilgan), `app/main.py` faqat `GET /api/v1/health`, `passenger_wsgi.py` (a2wsgi), `.env.example`.
-- [ ] Konfiguratsiya: pydantic-settings. `ENV=production` da dev-sirlar yoki SQLite bilan ishga tushish **xato beradi**.
-- [ ] `.github/workflows/test.yml`: Python 3.10 va 3.12 matritsa, PostgreSQL service, `pytest`.
-- [ ] `.gitignore`, `.editorconfig`.
+- [x] ARCHITECTURE.md 14-bo'limdagi papka tuzilmasi.
+- [x] `docs/spec/capabilities.json` → `packages/contracts/capabilities.json`. Qo'shimcha JSON Schema'lar `packages/contracts/schemas/`: `value`, `command-envelope`, `ack`, `state-report` (ARCHITECTURE 4.2–4.4).
+- [x] `packages/contracts/tests/`: barcha schema'lar o'zi to'g'ri JSON Schema ekanini tekshiruvchi test; har bir capability'da `permission`, `risk`, `attributes`, `actions` borligi.
+- [x] `services/backend/` skeleti: `pyproject.toml` yoki `requirements.txt` (versiyalar qotirilgan), `app/main.py` faqat `GET /api/v1/health`, `passenger_wsgi.py` (a2wsgi), `.env.example`.
+- [x] Konfiguratsiya: pydantic-settings. `ENV=production` da dev-sirlar yoki SQLite bilan ishga tushish **xato beradi**.
+- [x] `.github/workflows/test.yml`: Python 3.10 va 3.12 matritsa, PostgreSQL service, `pytest`.
+- [x] `.gitignore`, `.editorconfig`.
 
 Testlar: contracts testi, health testi, "production + dev sir → xato" testi.
 Tugash mezoni: CI yashil.

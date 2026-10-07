@@ -158,7 +158,7 @@ contactor     : commanded_closed, aux_contact_closed  (liniya o'chirish; tasdiq 
 
 Yangi qurilma qo'shish = adapter + mavjud capability'lardan foydalanish. UI capability'ga qarab avtomatik boshqaruv elementini chizadi.
 
-**To'liq spetsifikatsiya:** `docs/spec/capabilities.json` — atributlar, birliklar, harakatlar (parametrlar JSON Schema), ruxsat, xavf darajasi, `confirm_attribute`. Faza 1 da `packages/contracts/` ga ko'chiriladi va yagona manbaga aylanadi.
+**To'liq spetsifikatsiya:** `packages/contracts/capabilities.json` — atributlar, birliklar, harakatlar (parametrlar JSON Schema), ruxsat, xavf darajasi, `confirm_attribute`. Yagona manba (Faza 1 da `docs/spec/` dan ko'chirildi).
 
 Qurilma ikki identifikatorga ega: `id` (UUID, API uchun) va `key` (`garden_lights` kabi, uy ichida yagona — MQTT va Hub uchun). Har bir qurilma `unsupported` atributlar ro'yxatiga ega: hisoblagich o'lchamaydigan narsa `not_supported` bo'lib ko'rinadi.
 
@@ -188,7 +188,8 @@ requested → signed → sent → acked → confirmed
 
 ### 4.4 Buyruq imzosi (Backend → Hub)
 ```
-payload = {command_id, device_id, action, params, issued_at, expires_at, issued_by}
+payload = {command_id, device_id, device_key, capability, action, params,
+           issued_at, expires_at, issued_by: {user_id, role}}     -- ADR 0007
 home_signing_key = HMAC-SHA256(SIGNING_MASTER_KEY, "home-signing:" + home_id)
 signature        = HMAC-SHA256(home_signing_key, canonical_json(payload))
 canonical_json   = UTF-8, kalitlar tartiblangan, separators (',', ':'), bo'sh joysiz
@@ -311,7 +312,7 @@ Yuqori xavfli harakatlar (`risk: high` — darvoza, qulf, kontaktor) — buyruqd
 
 **Mehmon:** qurilma/vaqt bo'yicha ruxsatlar (grants) alohida faza. U tayyor bo'lmaguncha mehmon faqat ko'radi — "tayyor" deb ko'rsatilmaydi.
 
-Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live, camera_archive, configure, manage_users, view_audit`. Har bir capability qaysi ruxsatni talab qilishi `docs/spec/capabilities.json` da.
+Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live, camera_archive, configure, manage_users, view_audit`. Har bir capability qaysi ruxsatni talab qilishi `packages/contracts/capabilities.json` da.
 
 ---
 

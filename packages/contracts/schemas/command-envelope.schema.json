@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/command-envelope.schema.json",
+  "title": "Signed command envelope, Backend -> Hub (ARCHITECTURE 4.3, 4.4; ADR 0004, 0007)",
+  "description": "signature = HMAC-SHA256(home_signing_key, canonical_json(payload)) as lowercase hex. The Hub MUST reject envelopes with a bad signature, expired payload or replayed command_id.",
+  "type": "object",
+  "required": ["schema", "payload", "signature"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "payload": {
+      "type": "object",
+      "required": [
+        "command_id", "device_id", "device_key", "capability", "action",
+        "params", "issued_at", "expires_at", "issued_by"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": { "type": "string", "format": "uuid" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "device_key": { "$ref": "#/$defs/device_key" },
+        "capability": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "action": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "params": { "type": "object" },
+        "issued_at": { "$ref": "#/$defs/utc_ts" },
+        "expires_at": { "$ref": "#/$defs/utc_ts" },
+        "issued_by": {
+          "type": "object",
+          "required": ["user_id", "role"],
+          "additionalProperties": false,
+          "properties": {
+            "user_id": { "type": "string", "format": "uuid" },
+            "role": { "enum": ["owner", "admin", "family", "guest", "viewer"] }
+          }
+        }
+      }
+    },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+    "utc_ts": { "type": "string", "format": "date-time", "pattern": "Z$" }
+  }
+}

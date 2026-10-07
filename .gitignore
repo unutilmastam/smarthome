@@ -12,3 +12,8 @@ build/
 *.sqlite3
 .pytest_cache/
 .DS_Store
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/

@@ -6,7 +6,7 @@ Loyiha: **SmartHome Control Center** — real uy uchun boshqaruv tizimi (o'yinch
 1. `ARCHITECTURE.md` — tizim qanday tuzilgan (manba haqiqati).
 2. `docs/PHASES.md` — bosqichlar tartibi va har birining tugash mezoni.
 3. `docs/PROGRESS.md` — qaysi faza tugagan (bo'lmasa, Faza 0 dan boshla).
-4. `docs/spec/capabilities.json` (Faza 1 dan keyin `packages/contracts/`) — qurilma imkoniyatlari.
+4. `packages/contracts/` — qurilma imkoniyatlari (`capabilities.json`) va JSON Schema shartnomalar (yagona manba).
 
 ## Ish tartibi
 - So'ralgan **bitta fazani** bajar. Tugagach hisobot yoz (`docs/PHASES.md` dagi shablon) va to'xta.

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Uuid, text
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, Index, String, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, Timestamps, UUIDPk
@@ -28,6 +28,10 @@ class Hub(UUIDPk, Timestamps, Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
     # ADR 0014 watchdog: set when "hub offline" was announced, cleared when it is back.
     offline_notified_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
+    # Faza 14: last health the hub reported (broker, disks, outbox) and the watchdog's
+    # bookkeeping of active health alerts {kind: {"since": iso, "notified": bool}}.
+    health: Mapped[Optional[dict]] = mapped_column(JSON)
+    health_alerts: Mapped[Optional[dict]] = mapped_column(JSON)
 
     __table_args__ = (
         CheckConstraint("status IN ('active','revoked')", name="status_valid"),

@@ -244,9 +244,9 @@ Har bir tur uchun alohida qadam: contracts → ESPHome/PlatformIO proshivka → 
 
 ## Faza 14 — Mustahkamlash
 
-- [ ] Xavfsizlik tekshiruvi: `pip-audit`, `npm audit`, tashqi port skan, sirlar skan (gitleaks).
-- [ ] Backup'dan tiklash **haqiqatan** bajariladi va hujjatlanadi.
-- [ ] Runbook'lar: Hub o'chdi, broker yo'q, disk to'ldi, token o'g'irlandi (revoke), elektr uzildi.
+- [x] Xavfsizlik tekshiruvi: `pip-audit`, `npm audit`, tashqi port skan, sirlar skan (gitleaks).
+- [x] Backup'dan tiklash **haqiqatan** bajariladi va hujjatlanadi.
+- [x] Runbook'lar: Hub o'chdi, broker yo'q, disk to'ldi, token o'g'irlandi (revoke), elektr uzildi.
 
 ## Faza 15 — Uyni ishga tushirish
 

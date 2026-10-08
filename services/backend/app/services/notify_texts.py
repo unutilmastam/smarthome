@@ -30,6 +30,12 @@ SYSTEM_TEXT: Dict[str, str] = {
     "device.offline": "Qurilma aloqasiz: {device}",
     "device.online": "Qurilma qayta ulandi: {device}",
     "test": "Sinov xabari: bildirishnomalar ishlayapti",
+    "hub.broker_down": "Uydagi MQTT broker ishlamayapti — qurilmalarga buyruq yetmaydi",
+    "hub.broker_ok": "MQTT broker tiklandi",
+    "hub.data_disk_full": "Hub diski to'lmoqda: {pct}% — navbatdagi ma'lumotlar yo'qolishi mumkin",
+    "hub.data_disk_ok": "Hub diskida yana joy bor",
+    "hub.nvr_disk_full": "Kamera yozuvlari diski {pct}% to'ldi",
+    "hub.nvr_disk_ok": "Kamera yozuvlari diskida yana joy bor",
 }
 
 SEVERITY_MARK = {"info": "ℹ️", "warning": "⚠️", "critical": "🚨"}

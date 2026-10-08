@@ -41,6 +41,8 @@ sudo ufw enable
 ```
 LAN tarmog'i boshqacha bo'lsa (`192.168.1.0/24`), o'zingiznikini yozing.
 
+> **Muhim (Faza 14):** Docker o'zi e'lon qilgan portlarga (`ports:`) ufw qoidalarini **chetlab** kirish ochadi. Shuning uchun `docker-compose.yml` dagi har bir port aniq manzilga bog'langan: `HUB_LAN_IP` (LAN) va `HUB_TAILNET_IP` (Tailscale). Bu manzillar `.env` da yoziladi (7-qadam). `0.0.0.0` va IPv6 manzilda hech narsa tinglamaydi. Buni `tests/test_exposure.py` testi tekshiradi.
+
 ## 5. Tailscale (masofaviy kirish, port ochmasdan)
 ```
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -65,7 +67,8 @@ Svet qaytganda avtomatik yoqilishi uchun BIOS'da **"Restore on AC power loss: Po
 ```
 git clone https://github.com/unutilmastam/smarthome.git ~/smarthome
 cd ~/smarthome/services/hub
-cp .env.example .env && nano .env      # BACKEND_URL, HUB_TOKEN, SIGNING_KEY_HEX, MQTT_PASSWORD, ESPHOME_PASSWORD
+cp .env.example .env && nano .env      # BACKEND_URL, HUB_TOKEN, SIGNING_KEY_HEX, MQTT_PASSWORD, ESPHOME_PASSWORD,
+                                       # HUB_LAN_IP (DHCP reservation manzili), HUB_TAILNET_IP (`tailscale ip -4`)
 sh mosquitto/make-passwd.sh garden_lights   # har bir qurilma kaliti
 docker compose up -d
 docker compose ps
@@ -84,6 +87,7 @@ Ilovada Hub "Onlayn" bo'lishi kerak.
 
 ## Tekshiruv ro'yxati
 - [ ] `ufw status` → faqat LAN va Tailscale.
-- [ ] Router'da port forwarding yo'q; tashqi port skan (Faza 14).
+- [ ] Router'da port forwarding yo'q; tashqi port skan `[REAL]` — `docs/runbooks/security-audit.md` dagi 3-bo'lim.
+- [ ] `sudo ss -tlnp | grep -E ':(1883|8971|8555|6052)'` — har bir port faqat LAN/Tailscale manzilida yoki ufw ostida (`*:6052` faqat ESPHome uchun).
 - [ ] `upsc` UPS holatini ko'rsatadi; UPS'ni tarmoqdan uzib sinash.
 - [ ] Hub qayta yoqilgandan keyin hamma konteyner o'zi ko'tariladi (`restart: always`).

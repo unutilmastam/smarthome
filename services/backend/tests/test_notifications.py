@@ -553,3 +553,86 @@ def test_telegram_setup_job_registers_webhook_with_secret(settings, fake):
     hook = fake.tg("setWebhook")[-1]
     assert hook["secret_token"] == SECRET and hook["allowed_updates"] == ["message", "callback_query"]
     assert telegram_setup.run(Settings(_env_file=None, env="test")).startswith("skipped")
+
+
+# ------------------------------------------------------------------ hub health (Faza 14)
+
+
+def _beat(hub, **health):
+    r = hub.post("/api/v1/hub/heartbeat", json={"version": "1", "health": health})
+    assert r.status_code == 200, r.text
+
+
+def _age_alerts(dbs, seconds):
+    dbs.expire_all()
+    h = dbs.scalars(select(Hub)).one()
+    from sqlalchemy.orm.attributes import flag_modified
+    old = (utcnow() - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    h.health_alerts = {k: {**v, "since": old} for k, v in (h.health_alerts or {}).items()}
+    flag_modified(h, "health_alerts")
+    dbs.commit()
+
+
+def test_broker_down_is_reported_after_grace_and_recovery_follows(
+        client, owner, owner_home, hub, fake, dbs, settings):
+    link(client, owner)
+    _beat(hub, mqtt_connected=False, outbox=3, junk="x", data_disk_pct=500)
+    hubs = owner.get(f"/api/v1/homes/{owner_home}/hubs").json()["data"]
+    assert hubs[0]["health"] == {"mqtt_connected": False, "outbox": 3}   # unknown keys/values dropped
+    notify_job.run(dbs, settings)
+    assert notes(dbs, "hub.broker_down") == []          # a short broker restart is not an alert
+    _age_alerts(dbs, 130)
+    notify_job.run(dbs, settings)
+    down = notes(dbs, "hub.broker_down")
+    assert len(down) == 1 and down[0].severity == "warning"
+    assert "MQTT broker ishlamayapti" in fake.tg("sendMessage")[-1]["text"]
+    notify_job.run(dbs, settings)
+    assert len(notes(dbs, "hub.broker_down")) == 1      # once
+    _beat(hub, mqtt_connected=True)
+    notify_job.run(dbs, settings)
+    assert len(notes(dbs, "hub.broker_ok")) == 1
+    assert "MQTT broker tiklandi" in fake.tg("sendMessage")[-1]["text"]
+    dbs.expire_all()
+    assert dbs.scalars(select(Hub)).one().health_alerts is None
+
+
+def test_disk_alerts_and_flapping_without_alert(client, owner, hub, fake, dbs, settings):
+    link(client, owner)
+    _beat(hub, mqtt_connected=False)
+    notify_job.run(dbs, settings)
+    _beat(hub, mqtt_connected=True)                       # came back within the grace time
+    notify_job.run(dbs, settings)
+    assert notes(dbs, "hub.broker_down") == [] and notes(dbs, "hub.broker_ok") == []
+    _beat(hub, mqtt_connected=True, data_disk_pct=96.0, data_disk_warning=True,
+          disk_usage_pct=91.0, disk_warning=True)
+    notify_job.run(dbs, settings)
+    _age_alerts(dbs, 130)
+    notify_job.run(dbs, settings)
+    assert "96.0%" in notes(dbs, "hub.data_disk_full")[0].title
+    assert "91.0%" in notes(dbs, "hub.nvr_disk_full")[0].title
+    # Health unknown (hub sends nothing): the alert is neither repeated nor "resolved".
+    _beat(hub)
+    notify_job.run(dbs, settings)
+    assert notes(dbs, "hub.data_disk_ok") == [] and notes(dbs, "hub.nvr_disk_ok") == []
+    assert len(notes(dbs, "hub.data_disk_full")) == 1
+    _beat(hub, data_disk_pct=60.0, data_disk_warning=False, disk_usage_pct=70.0, disk_warning=False)
+    notify_job.run(dbs, settings)
+    assert len(notes(dbs, "hub.data_disk_ok")) == 1 and len(notes(dbs, "hub.nvr_disk_ok")) == 1
+
+
+def test_offline_hub_health_is_not_judged(client, owner, hub, fake, dbs, settings):
+    link(client, owner)
+    _beat(hub, mqtt_connected=False)
+    _age_alerts(dbs, 130)
+    _set_last_seen(dbs, timedelta(minutes=10))
+    notify_job.run(dbs, settings)
+    assert notes(dbs, "hub.broker_down") == []           # hub offline: one message is enough
+    assert len(notes(dbs, "hub.offline")) == 1
+
+
+def test_logout_all_removes_push_subscriptions(owner, fake, dbs):
+    """Faza 14 (token stolen): a lost phone must stop receiving home alarms."""
+    subscribe(owner)
+    assert owner.post("/api/v1/auth/logout-all").status_code == 200
+    dbs.expire_all()
+    assert dbs.scalars(select(PushSubscription)).all() == []

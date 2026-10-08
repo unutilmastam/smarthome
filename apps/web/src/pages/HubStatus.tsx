@@ -66,6 +66,7 @@ export function HubStatus() {
           <div className="row spread"><span className="muted">{t("hub.lastSeen")}</span>
             <span>{h.last_seen ? new Date(h.last_seen).toLocaleString(i18n.language, { timeZone: home?.timezone }) : "—"}</span></div>
           <div className="row spread"><span className="muted">{t("hub.version")}</span><span>{h.version ?? "—"}</span></div>
+          {h.status === "active" && <HubHealth h={h} />}
           {canConfigure && h.status === "active" && (
             <button className="danger" onClick={async () => {
               if (window.confirm(t("hub.revokeConfirm"))) { await api.post(`/hubs/${h.id}/revoke`); await refresh(); }
@@ -82,5 +83,24 @@ export function HubStatus() {
         </form>
       )}
     </div>
+  );
+}
+
+/** What the hub reported about itself; nothing is shown as fine unless the hub said so. */
+function HubHealth({ h }: { h: Hub }) {
+  const { t } = useTranslation();
+  const hh = h.health ?? {};
+  const unknown = t("status.unknown");
+  const pct = (v?: number, warn?: boolean) => v === undefined ? unknown : <span className={warn ? "error" : ""}>{v}%</span>;
+  return (
+    <>
+      <div className="row spread"><span className="muted">{t("hub.broker")}</span>
+        <span className={hh.mqtt_connected === false ? "error" : ""}>
+          {hh.mqtt_connected === undefined ? unknown : t(hh.mqtt_connected ? "hub.brokerOk" : "hub.brokerDown")}</span></div>
+      <div className="row spread"><span className="muted">{t("hub.dataDisk")}</span><span>{pct(hh.data_disk_pct, hh.data_disk_warning)}</span></div>
+      {hh.disk_usage_pct !== undefined &&
+        <div className="row spread"><span className="muted">{t("hub.nvrDisk")}</span><span>{pct(hh.disk_usage_pct, hh.disk_warning)}</span></div>}
+      <div className="row spread"><span className="muted">{t("hub.outbox")}</span><span>{hh.outbox ?? unknown}</span></div>
+    </>
   );
 }

@@ -94,6 +94,9 @@ export interface Room { id: string; home_id: string; name: string; type: "indoor
 export interface Hub {
   id: string; name: string; status: "active" | "revoked"; online: boolean;
   last_seen: string | null; version: string | null;
+  /** Exactly what the hub last reported (Faza 14); missing keys = unknown. */
+  health?: { mqtt_connected?: boolean; data_disk_pct?: number; data_disk_warning?: boolean;
+    disk_usage_pct?: number; disk_warning?: boolean; outbox?: number } | null;
 }
 
 export type CommandStatus =

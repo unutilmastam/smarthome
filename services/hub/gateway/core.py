@@ -7,6 +7,8 @@ config refresh, MQTT listener, outbox flush (offline buffer), periodic full repo
 import asyncio
 import json
 import logging
+import os
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Set
@@ -25,6 +27,9 @@ from gateway.telemetry import RAW_RETENTION, Aggregator
 from gateway.timeutil import iso, parse_ts, utcnow
 from gateway.verifier import verify_envelope
 from gateway.watchers import DEFAULT_LEFT_OPEN_S, DEFAULT_NO_EFFECT_S, ClimateWatcher, GateWatcher
+
+# Hub system disk (SQLite outbox). Recordings HDD has its own limit (DISK_WARNING_PCT).
+DATA_DISK_WARNING_PCT = 90.0
 
 log = logging.getLogger("gateway")
 
@@ -223,9 +228,20 @@ class Gateway:
             await asyncio.sleep(self.s.config_refresh_s)
 
     # ---- heartbeat -------------------------------------------------------------------
+    def data_disk_pct(self) -> Optional[float]:
+        """Disk holding the hub's SQLite (outbox, executed command ids). Full -> outbox lost."""
+        try:
+            u = shutil.disk_usage(os.path.dirname(os.path.abspath(self.s.db_path)) or ".")
+        except OSError:
+            return None   # unknown, never guessed
+        return round(100.0 * u.used / u.total, 1) if u.total else None
+
     def health(self) -> dict:
         avail = self.store.availability()
+        data_pct = self.data_disk_pct()
         return {"mqtt_connected": self.mqtt_connected.is_set(),
+                "data_disk_pct": data_pct,
+                "data_disk_warning": data_pct is not None and data_pct >= DATA_DISK_WARNING_PCT,
                 "frigate_ok": self.frigate_ok,
                 "disk_usage_pct": self.disk_usage_pct,
                 "disk_warning": self.disk_usage_pct is not None
@@ -420,6 +436,7 @@ class Gateway:
                     for t in ("state", "telemetry", "availability", "ack", "event"):
                         await client.subscribe(f"home/+/{t}", qos=1)
                     self.mqtt_connected.set()
+                    log.info("local mqtt connected (%s:%s)", self.s.mqtt_host, self.s.mqtt_port)
                     delay = 1.0
                     async for msg in client.messages:
                         try:

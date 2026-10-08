@@ -68,4 +68,4 @@ Kunlik zaxiralar: `~/sh-deploy/daily` (14 kun). Deploy oldidan olingan zaxiralar
 ## Muammo bo'lsa
 - 503: cPanel → Setup Python App → **Restart**. Log: `~/smarthome-api/stderr.log`.
 - Deploy log'i: GitHub → Actions → `deploy-cloud` → oxirgi run.
-- Qo'lda tiklash (faqat 🆘 holatda): `gunzip -c ~/sh-deploy/backups/<fayl>.sql.gz | psql "$DATABASE_URL"`. `DATABASE_URL` dagi `+psycopg` qismini olib tashlang.
+- Qo'lda tiklash (🆘 holatda yoki ma'lumot xato o'chirilganda): `bash ~/smarthome-api/restore.sh <dump> --yes` — [backup-restore.md](backup-restore.md). Oldingi `gunzip | psql` usuli jadvallar mavjud bazada ishlamaydi va ishlatilmaydi.

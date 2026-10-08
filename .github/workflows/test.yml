@@ -95,6 +95,36 @@ jobs:
           python -m pip install pytest
           python -m pytest -q infra/cpanel/tests
 
+  security:
+    name: security (pip-audit, npm audit, gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # gitleaks scans the whole history
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: pip-audit (pinned backend + hub requirements)
+        run: |
+          python -m pip install -q pip-audit==2.10.1
+          for r in services/backend/requirements-dev.txt services/hub/requirements-dev.txt; do
+            pip-audit -r "$r" --progress-spinner off
+          done
+      - name: npm audit (high and critical fail the build)
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+      - name: gitleaks (history + working tree; reviewed false positives in .gitleaksignore)
+        run: |
+          curl -sSL -o /tmp/gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          echo "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  /tmp/gl.tgz" | sha256sum -c -
+          tar -xzf /tmp/gl.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --exit-code 1 .
+          /tmp/gitleaks dir --redact --exit-code 1 .
+
   hub:
     name: hub ${{ matrix.python }} (gateway + simulator + mosquitto)
     runs-on: ubuntu-latest
@@ -129,7 +159,7 @@ jobs:
         working-directory: services/hub
         run: |
           cp .env.example .env && touch mosquitto/passwd
-          SIM_DEVICE_PASSWORD=ci ESPHOME_PASSWORD=ci docker compose --profile sim config -q
+          HUB_LAN_IP=192.168.1.10 SIM_DEVICE_PASSWORD=ci ESPHOME_PASSWORD=ci docker compose --profile sim config -q
 
   web:
     name: web (typecheck, unit, build, e2e [SIM])

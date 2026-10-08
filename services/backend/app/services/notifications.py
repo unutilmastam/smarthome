@@ -128,6 +128,89 @@ def from_run(db: Session, home_id: uuid.UUID, run_id: uuid.UUID, automation_id: 
     return out
 
 
+# ---------------------------------------------------------------- hub health (Faza 14)
+
+_HEALTH_BOOL = ("mqtt_connected", "frigate_ok", "data_disk_warning", "disk_warning")
+_HEALTH_PCT = ("data_disk_pct", "disk_usage_pct")
+_HEALTH_INT = ("outbox", "devices_online", "devices_known")
+
+
+def clean_health(raw: dict) -> dict:
+    """Only known keys with the right types are kept; anything else is dropped (not guessed)."""
+    out: dict = {}
+    for k in _HEALTH_BOOL:
+        if isinstance(raw.get(k), bool):
+            out[k] = raw[k]
+    for k in _HEALTH_PCT:
+        v = raw.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 100:
+            out[k] = round(float(v), 1)
+    for k in _HEALTH_INT:
+        v = raw.get(k)
+        if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+            out[k] = v
+    return out
+
+
+def _flag(h: dict, key: str, bad: bool) -> Optional[bool]:
+    """True = problem, False = fine, None = the hub did not say (unknown: change nothing)."""
+    v = h.get(key)
+    return None if not isinstance(v, bool) else v is bad
+
+
+# kind -> (is the problem present? True/False/None, data for the text)
+HEALTH_ALERTS = {
+    "hub.broker_down": (lambda h: _flag(h, "mqtt_connected", False), lambda h: {}),
+    "hub.data_disk_full": (lambda h: _flag(h, "data_disk_warning", True),
+                           lambda h: {"pct": h.get("data_disk_pct", "?")}),
+    "hub.nvr_disk_full": (lambda h: _flag(h, "disk_warning", True),
+                          lambda h: {"pct": h.get("disk_usage_pct", "?")}),
+}
+RECOVERED = {"hub.broker_down": "hub.broker_ok", "hub.data_disk_full": "hub.data_disk_ok",
+             "hub.nvr_disk_full": "hub.nvr_disk_ok"}
+HEALTH_GRACE = timedelta(seconds=120)   # a broker restart of a few seconds is not an alert
+
+
+def _health_alerts(db: Session, h: Hub, now: datetime) -> List[Notification]:
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.services.hub_reports import _parse_ts as parse_ts
+
+    health = h.health or {}
+    alerts = {k: dict(v) for k, v in (h.health_alerts or {}).items()}
+    out: List[Notification] = []
+    for kind, (present, data) in HEALTH_ALERTS.items():
+        a = alerts.get(kind)
+        state = present(health)
+        if state is None:
+            continue                       # unknown: neither raise nor resolve
+        if state:
+            if a is None:
+                alerts[kind] = {"since": iso(now), "notified": False}
+            elif not a["notified"] and parse_ts(a["since"]) <= now - HEALTH_GRACE:
+                n = create(db, home_id=h.home_id, severity="warning", source="hub", kind=kind,
+                           title=notify_texts.system_title(kind, data(health)), body=f"🖥 {h.name}",
+                           data={"hub_id": str(h.id), **data(health)}, ts=parse_ts(a["since"]),
+                           dedupe_key=f"{kind}:{h.id}:{a['since']}")
+                a["notified"] = True
+                out += [n] if n else []
+        elif a is not None:
+            if a["notified"]:
+                prev = db.scalar(select(Notification).where(
+                    Notification.home_id == h.home_id,
+                    Notification.dedupe_key == f"{kind}:{h.id}:{a['since']}"))
+                ok_kind = RECOVERED[kind]
+                n = create(db, home_id=h.home_id, severity="info", source="hub", kind=ok_kind,
+                           title=notify_texts.system_title(ok_kind, {}), body=f"🖥 {h.name}",
+                           data={"hub_id": str(h.id)}, ts=now,
+                           dedupe_key=f"{ok_kind}:{h.id}:{a['since']}",
+                           users=recipients_of(db, prev) if prev else set())
+                out += [n] if n else []
+            del alerts[kind]
+    h.health_alerts = alerts or None
+    flag_modified(h, "health_alerts")
+    return out
+
+
 def _hub_offline(h: Hub, s: Settings, now: datetime) -> bool:
     return h.last_seen is None or h.last_seen < now - timedelta(seconds=s.hub_offline_alert_s)
 
@@ -151,6 +234,7 @@ def watchdog(db: Session, s: Settings, now: Optional[datetime] = None) -> List[N
                 out += [n] if n else []
         else:
             online_homes.add(h.home_id)
+            out += _health_alerts(db, h, now)
             if h.offline_notified_at is not None:
                 prev = db.scalars(select(Notification).where(
                     Notification.home_id == h.home_id, Notification.kind == "hub.offline")

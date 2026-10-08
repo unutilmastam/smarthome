@@ -34,4 +34,16 @@ describe("HubStatus", () => {
     expect(await screen.findByText("Hub ulanmagan")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hub qo'shish" })).not.toBeInTheDocument();
   });
+
+  it("shows hub health exactly as reported; missing values stay unknown", async () => {
+    const hub = { id: "x", name: "Asosiy hub", status: "active", online: true, last_seen: null, version: "1",
+      health: { mqtt_connected: false, data_disk_pct: 96, data_disk_warning: true } };
+    mockFetch((url) => (url.endsWith("/homes") ? ok([HOME]) : url.endsWith("/hubs") ? ok([hub]) : undefined));
+    renderWithProviders(<HubStatus />);
+    expect(await screen.findByText("Ishlamayapti")).toHaveClass("error");
+    expect(screen.getByText("96%")).toHaveClass("error");
+    expect(screen.queryByText("Kamera yozuvlari diski")).not.toBeInTheDocument();   // no cameras reported
+    const outbox = screen.getByText("Yuborilishi kutilayotganlar").parentElement!;
+    expect(outbox).toHaveTextContent("Noma'lum");
+  });
 });

@@ -19,6 +19,7 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | qisman: shartnoma, Hub, proshivka, UI va nosozlik testlari `[SIM]` tugadi; **apparatda sinalmagan** (`[REAL]` jadvallar bo'sh, inventar H-05/H-06/H-11/H-13 ochiq) |
 | 12 | Avtomatika (Hub'da) | tugadi `[SIM]`: format, validatsiya, Hub dvigateli, vizual muharrir; haqiqiy uyda sinalmagan |
 | 13 | Bildirishnomalar | tugadi `[SIM]`: Telegram (webhook, bog'lash kodi, "Ko'rdim"), Web Push (VAPID), nazoratchi cron, tasdiqlash; haqiqiy bot va telefonda sinalmagan |
+| 14 | Mustahkamlash | tugadi: skanlar (zaiflik va sir yo'q), port bog'lash xatosi tuzatildi, zaxiradan tiklash haqiqiy PostgreSQL'da bajarildi, 7 runbook; tashqi port skani va production'da tiklash mashqi `[REAL]` qoldi |
 
 ---
 
@@ -928,3 +929,65 @@ Tasdiqlanishi kerak `[REAL]`:
 - Hub tokini uzib, 3 daqiqa ichida Telegram'ga "Hub aloqasiz" xabari kelishini tekshirish.
 
 Keyingi faza: 14 — Mustahkamlash.
+
+## Faza 14 — Mustahkamlash — 2026-10-08
+Holat: tugadi. Skanlar va tiklash mashqi haqiqatan bajarildi: lokal, haqiqiy PostgreSQL 16 da va CI'da. Tashqi port skani va production serverdagi tiklash mashqi `[REAL]` — uy va server tayyor bo'lganda bajariladi (`docs/runbooks/security-audit.md` 3-bo'lim, `backup-restore.md`).
+
+**Xavfsizlik tekshiruvi** (`docs/runbooks/security-audit.md`):
+- `pip-audit` (backend + hub, tranzitiv paketlar bilan): **zaiflik yo'q**. `npm audit`: **0**. `gitleaks` (22 commit + ishchi papka): **haqiqiy sir yo'q**. 2 ta soxta topilma `.gitleaksignore` ga sababi bilan yozildi.
+- Yangi CI job'i `security`: pip-audit, `npm audit --audit-level=high`, gitleaks. Gitleaks binari sha256 bilan tekshiriladi. Yiqilsa, deploy bo'lmaydi.
+
+**Topilgan va tuzatilgan muammolar:**
+1. **Port ochiqligi (jiddiy):**
+   - Muammo: `docker-compose.yml` dagi `"1883:1883"`, `8971`, `8555` portlari barcha manzillarda (IPv6 ham) ochilardi, Docker esa ufw'ni chetlab o'tadi.
+   - Tuzatish: endi har bir port `HUB_LAN_IP` / `HUB_TAILNET_IP` ga bog'langan; `HUB_LAN_IP` siz stack ishga tushmaydi.
+   - Tekshiruv: `tests/test_exposure.py` testi (eski konfiguratsiyada yiqilishi ko'rildi) va `docker compose config` (7/7 portda `host_ip` bor).
+2. **`backup.sh` yolg'on "backup ok":**
+   - Muammo: POSIX `sh` da `pg_dump | gzip` ishlatilardi va `pipefail` yo'q. Yarim dump "ok" deb hisoblanardi.
+   - Tuzatish: endi `pg_dump` chiqish kodi va "dump complete" oxirgi qatori tekshiriladi.
+   - Tekshiruv: regressiya testi bor.
+3. **Hub sog'lig'i yo'qolardi:**
+   - Muammo: Hub heartbeat'da broker va disk holatini yuborardi, bulut esa uni tashlab yuborardi.
+   - Tuzatish (migratsiya 0009, expand-only):
+     - `hubs.health` (faqat ma'lum kalitlar va turlar) va `hubs.health_alerts` saqlanadi;
+     - watchdog **broker ishlamasa** va **disk to'lsa** (Hub tizim diski ≥ 90%, kamera HDD'si ≥ 85%) ⚠️ bildirishnoma beradi, tiklanganda xabar beradi;
+     - 2 daqiqalik kutish bor (broker qisqa qayta yuklansa, xabar yuborilmaydi);
+     - **noma'lum holat** na alert yaratadi, na "tiklandi" deydi (test shu xatoni topdi va tuzatildi).
+   - Hub sahifasida broker, disklar va outbox ko'rinadi. Hub o'z tizim diskini o'lchaydi (`data_disk_pct`).
+4. **Docker log'lari cheklanmagan edi:** endi har servisga 3 × 10 MB.
+5. **Yo'qolgan telefon:** "Barcha qurilmalardan chiqish" endi Push obunalarini ham o'chiradi.
+6. **Runbook'dagi xato maslahat:** `gunzip | psql` usuli mavjud bazada ishlamaydi. U `restore.sh` bilan almashtirildi.
+
+**Zaxiradan tiklash — haqiqatan bajarildi** (`infra/cpanel/restore.sh`, `docs/runbooks/backup-restore.md`):
+- `restore.sh` qadamlari:
+  1. dump tekshiriladi;
+  2. hozirgi baza xavfsizlik dumpiga saqlanadi;
+  3. o'chirish va yuklash **bitta tranzaksiyada** bajariladi (xato bo'lsa, baza o'zgarmaydi);
+  4. `alembic upgrade head`;
+  5. ilova qayta ishga tushiriladi.
+- Mashq haqiqiy PostgreSQL'da, deploy qilingan ilova bilan bajarildi:
+  - "falokat": ma'lumot va jadval o'chirildi;
+  - kesilgan dump rad etildi, o'rtasida xato bor dump orqaga qaytarildi;
+  - tiklashdan keyin ma'lumot, jadval va alembic versiyasi joyida, ilova sog';
+  - xavfsizlik dumpi bilan orqaga qaytarish ishladi.
+- `restore.sh` relizga qo'shildi.
+
+**Runbook'lar** (`docs/runbooks/`): `hub-down`, `broker-down`, `disk-full`, `token-stolen` (telefon, Hub, bulut sirlari, deploy kaliti — har biri qanday bekor qilinadi va almashtiriladi), `power-outage`, `backup-restore`, `security-audit`. Hammasi iPad'dan bajariladi. Tugma nomlari ilovadagi haqiqiy matnlar bilan solishtirildi. Runbook uchun gateway'ga `local mqtt connected` log qatori qo'shildi.
+
+Testlar:
+- Backend: 212 passed (SQLite). Notifications, migrations va hub testlari PostgreSQL 16 da ham o'tdi (85).
+- Hub: 88 passed `[SIM]`, shu jumladan 5 ta yangi exposure testi.
+- Deploy va tiklash skriptlari: 9 passed (haqiqiy PostgreSQL).
+- Web: vitest 52 passed.
+
+Hal qilinmagan xavflar:
+- **Audit log uchun ilovada sahifa yo'q**: ma'lumot faqat API orqali olinadi. Kelajakdagi ish sifatida qayd etildi.
+- Imzo kalitini almashtirish uchun bitta `SIGNING_MASTER_KEY` almashtiriladi. Bitta uy uchun bu yetarli; bir nechta uy bo'lsa, har uy uchun alohida rotatsiya kerak bo'ladi.
+- Yangi CVE chiqsa, `security` job'i deploy'ni to'xtatadi. Bu ataylab qilingan: runbook'da nima qilish kerakligi yozilgan.
+
+`[REAL]` qoldi:
+- tashqi port skani (mobil internetdan, IPv4 va IPv6);
+- production serverda bir marta tiklash mashqi;
+- UPS va elektr uzilishi sinovi.
+
+Keyingi faza: 15 — Uyni ishga tushirish (apparat kerak).

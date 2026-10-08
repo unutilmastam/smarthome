@@ -25,7 +25,7 @@ from app.services.device_view import iso
 from app.services.automations import hub_view as automations_for_hub
 from app.services.automation_runs import ingest as ingest_runs
 from app.services.events import ingest as ingest_events
-from app.services.notifications import dispatch_now
+from app.services.notifications import clean_health, dispatch_now
 from app.services.hub_reports import apply_report
 from app.services.telemetry import ingest as ingest_telemetry
 
@@ -77,6 +77,8 @@ def heartbeat(body: HeartbeatIn, hub: Hub = Depends(get_hub), db: Session = Depe
         hub.tailnet_host = body.tailnet_host or None
     if body.lan_host is not None:
         hub.lan_host = body.lan_host or None
+    if body.health is not None:
+        hub.health = clean_health(body.health)
     db.commit()
     return ok({"server_time": iso(now), "hub_id": str(hub.id)})
 

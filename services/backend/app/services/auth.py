@@ -4,7 +4,7 @@ import uuid
 from datetime import timedelta
 from typing import Optional, Tuple
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -20,7 +20,7 @@ from app.core.security import (
     verify_secret,
 )
 from app.db.types import utcnow
-from app.models import AuthSession, User
+from app.models import AuthSession, PushSubscription, User
 from app.services import audit, rate_limit
 
 MAX_FAILED_LOGINS = 5
@@ -140,8 +140,12 @@ def logout(db: Session, user: User, session: AuthSession, ip: Optional[str]) -> 
 
 
 def logout_all(db: Session, user: User, ip: Optional[str]) -> int:
+    """Lost/stolen phone: every session AND every Web Push subscription goes (a stolen phone
+    must not keep receiving home alarms). Telegram links stay: unlink them in Settings."""
     n = revoke_all(db, user.id, "logout_all")
-    audit.record(db, "auth.logout_all", actor_id=user.id, ip=ip, details={"sessions_revoked": n})
+    pushes = db.execute(delete(PushSubscription).where(PushSubscription.user_id == user.id)).rowcount
+    audit.record(db, "auth.logout_all", actor_id=user.id, ip=ip,
+                 details={"sessions_revoked": n, "push_subscriptions_removed": pushes or 0})
     db.commit()
     return n
 

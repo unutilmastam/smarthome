@@ -377,9 +377,9 @@ Format: `packages/contracts/schemas/automation.schema.json` (ADR 0013). Misol (U
 | Internet qaytdi | Hub buferni yuboradi, holatlarni qayta e'lon qiladi, muddati o'tgan buyruqlarni bajarmaydi |
 | Svet o'chdi, qaytdi | Har bir rele `restore_mode` bo'yicha (standart: OFF; chiroqlar sozlanadi). Nasos — har doim OFF |
 | ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin; Hub o'zi aloqasiz bo'lsa — alohida xabar yo'q, ADR 0014) |
-| Lokal broker yiqildi | Docker `restart: always`, Hub salomatligi `degraded` |
+| Lokal broker yiqildi | Docker `restart: always`. Hub heartbeat'da `mqtt_connected=false` → 2 daqiqadan keyin ⚠️ bildirishnoma, tiklanganda xabar (Faza 14) |
 | Cloud broker yo'q | Buyruqlar HTTPS polling orqali davom etadi (ADR 0005). Hub ham yetib bo'lmasa (`last_seen` eskirgan) — `503 HUB_UNREACHABLE`, buyruq yaratilmaydi, PWA aniq xabar ko'rsatadi |
-| HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ogohlantirish |
+| HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ⚠️ bildirishnoma. Hub tizim diski ≥ 90% → ⚠️ (outbox xavfi). Docker log'lari 3×10 MB bilan cheklangan (Faza 14) |
 | Hub o'zi o'chdi | Cloud cron (har daqiqa): `hubs.last_seen` > 150 s → kritik bildirishnoma (Telegram + Push) — 3 daqiqa ichida; qaytganda "Hub qayta ulandi" (ADR 0014) |
 
 ---

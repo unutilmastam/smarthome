@@ -40,6 +40,8 @@ def hub_view(hub: Hub, settings: Settings) -> dict:
         "lan_host": hub.lan_host,
         "created_at": iso(hub.created_at),
         "revoked_at": iso(hub.revoked_at),
+        # As reported by the hub; null until it reports (never filled in by the cloud).
+        "health": hub.health,
     }
 
 

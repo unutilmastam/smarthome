@@ -33,6 +33,9 @@ class HomeMember(Timestamps, Base):
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
+    # ADR 0014: lowest severity sent to this member's Telegram/Push (critical always goes).
+    notify_min_severity: Mapped[str] = mapped_column(String(16), default="warning",
+                                                     server_default="warning", nullable=False)
 
     __table_args__ = (
         CheckConstraint(

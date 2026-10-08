@@ -12,6 +12,7 @@
 # Required env: APP_DIR WEB_DIR STAGE_DIR STATE_DIR VENV_ACTIVATE HEALTH_URL EXPECT_BUILD
 # Optional env: KEEP_BACKUPS (10) HEALTH_TIMEOUT (120 s) RESTART_CMD
 #               INIT_DATABASE_URL (only used to create APP_DIR/.env on the first deploy)
+#               TELEGRAM_BOT_TOKEN PUBLIC_BASE_URL (ADR 0014: written into APP_DIR/.env)
 set -uo pipefail
 
 : "${APP_DIR:?}" "${WEB_DIR:?}" "${STAGE_DIR:?}" "${STATE_DIR:?}" "${VENV_ACTIVATE:?}"
@@ -140,6 +141,31 @@ rollback() {
 # ---- 3. new code, migration, restart ----------------------------------------------------
 log "installing build $EXPECT_BUILD"
 $PIP_INSTALL "$STAGE_DIR/api/requirements.txt" || rollback "pip install failed"
+
+# ---- notification settings (ADR 0014): kept ONLY in .env; generated secrets never leave here --
+env_get() { grep -E "^$1=" "$APP_DIR/.env" | head -1 | cut -d= -f2-; }
+env_set() {  # replace or append KEY=VALUE; the value is never printed
+  ( umask 077
+    { grep -v -E "^$1=" "$APP_DIR/.env"; printf '%s=%s\n' "$1" "$2"; } > "$APP_DIR/.env.tmp" \
+      && mv "$APP_DIR/.env.tmp" "$APP_DIR/.env" )
+}
+for key in TELEGRAM_BOT_TOKEN PUBLIC_BASE_URL; do
+  val="${!key:-}"
+  if [ -n "$val" ] && [ "$(env_get "$key")" != "$val" ]; then
+    env_set "$key" "$val" && log "$key set in .env"
+  fi
+done
+if [ -z "$(env_get TELEGRAM_WEBHOOK_SECRET)" ]; then
+  env_set TELEGRAM_WEBHOOK_SECRET "$(python -c 'import secrets;print(secrets.token_hex(32))')" \
+    && log "TELEGRAM_WEBHOOK_SECRET generated"
+fi
+if [ -z "$(env_get VAPID_PRIVATE_KEY)" ]; then
+  vapid="$(python -c 'import base64; from cryptography.hazmat.primitives.asymmetric import ec
+k = ec.generate_private_key(ec.SECP256R1()).private_numbers().private_value.to_bytes(32, "big")
+print(base64.urlsafe_b64encode(k).rstrip(b"=").decode())' 2>/dev/null)"
+  if [ -n "$vapid" ]; then env_set VAPID_PRIVATE_KEY "$vapid" && log "VAPID_PRIVATE_KEY generated"
+  else log "WARNING: could not generate VAPID key (Web Push stays off)"; fi
+fi
 mkdir -p "$APP_DIR" "$WEB_DIR"
 rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$STAGE_DIR/api/" "$APP_DIR/" \
   || rollback "code upload into $APP_DIR failed"
@@ -157,12 +183,16 @@ health_ok "$EXPECT_BUILD" || rollback "health check failed (build $EXPECT_BUILD 
 ( cd "$APP_DIR" && python -m app.jobs.no_video_check "$APP_DIR" "$WEB_DIR" ) \
   || rollback "no-video check failed (ADR 0006)"
 
+# Telegram webhook (ADR 0014). Never fails the deploy: notifications are not worth a rollback.
+( cd "$APP_DIR" && python -m app.jobs.telegram_setup ) || log "WARNING: Telegram webhook setup failed"
+
 # ---- 5. cron jobs (idempotent; never fails the deploy) ------------------------------------
 install_cron() {
   local py marker="# smarthome-managed"
   py="$(command -v python)"
   { crontab -l 2>/dev/null | grep -v "$marker"
     echo "* * * * * cd $APP_DIR && $py -m app.jobs.expire_due >/dev/null 2>&1 $marker"
+    echo "* * * * * cd $APP_DIR && $py -m app.jobs.notify >/dev/null 2>&1 $marker"
     echo "7 * * * * cd $APP_DIR && $py -m app.jobs.energy >/dev/null 2>&1 $marker"
     echo "17 3 * * * cd $APP_DIR && $py -m app.jobs.retention >/dev/null 2>&1 $marker"
     echo "41 3 * * * sh $APP_DIR/backup.sh >/dev/null 2>&1 $marker"

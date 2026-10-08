@@ -3,7 +3,7 @@ the type must be listed in the contract and the severity comes from the contract
 
 import uuid
 from datetime import timedelta
-from typing import Dict
+from typing import Dict, List, Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -11,13 +11,16 @@ from sqlalchemy.orm import Session
 from app.core.contracts import Contracts
 from app.db.types import utcnow
 from app.models import Device, Event, Hub
+from app.services import notifications
 from app.services.device_view import iso
 from app.services.hub_reports import _parse_ts as parse_ts
 
 RETENTION = timedelta(days=180)
 
 
-def ingest(db: Session, hub: Hub, contracts: Contracts, body: dict) -> dict:
+def ingest(db: Session, hub: Hub, contracts: Contracts, body: dict,
+           created: Optional[List] = None) -> dict:
+    """`created` (if given) receives the notifications made for new events (ADR 0014)."""
     keys = {e["device_key"] for e in body["events"]}
     devices: Dict[str, Device] = {
         d.key: d for d in db.scalars(select(Device).where(
@@ -25,6 +28,7 @@ def ingest(db: Session, hub: Hub, contracts: Contracts, body: dict) -> dict:
     ids = [uuid.UUID(e["id"]) for e in body["events"]]
     seen = set(db.scalars(select(Event.id).where(Event.id.in_(ids))))
     accepted, duplicates, rejected = 0, 0, []
+    new: List[Event] = []
     for e in body["events"]:
         eid = uuid.UUID(e["id"])
         if eid in seen:
@@ -39,12 +43,18 @@ def ingest(db: Session, hub: Hub, contracts: Contracts, body: dict) -> dict:
         if severity is None or cap not in {c.capability for c in device.capabilities}:
             rejected.append({"id": e["id"], "reason": f"event type {e['type']} not allowed for this device"})
             continue
-        db.add(Event(id=eid, home_id=hub.home_id, device_id=device.id, device_key=device.key,
-                     type=e["type"], severity=severity, ts=parse_ts(e["ts"]),
-                     data=e.get("data") or {}))
+        row = Event(id=eid, home_id=hub.home_id, device_id=device.id, device_key=device.key,
+                    type=e["type"], severity=severity, ts=parse_ts(e["ts"]),
+                    data=e.get("data") or {})
+        db.add(row)
+        new.append(row)
         seen.add(eid)
         accepted += 1
+    db.flush()
+    made = notifications.from_events(db, hub.home_id, new)
     db.commit()
+    if created is not None:
+        created.extend(made)
     return {"accepted": accepted, "duplicates": duplicates, "rejected": rejected}
 
 

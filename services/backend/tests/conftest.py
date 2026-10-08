@@ -87,6 +87,9 @@ class Api:
     def patch(self, url, json=None, **kw):
         return self.c.patch(url, json=json, headers=self._h(kw.pop("headers", None)), **kw)
 
+    def put(self, url, json=None, **kw):
+        return self.c.put(url, json=json, headers=self._h(kw.pop("headers", None)), **kw)
+
     def delete(self, url, **kw):
         return self.c.delete(url, headers=self._h(kw.pop("headers", None)), **kw)
 

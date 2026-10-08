@@ -112,3 +112,17 @@ export interface Member { user_id: string; email: string; name: string; role: Ro
 export interface SessionInfo { id: string; current: boolean; ip: string | null; user_agent: string | null; last_used_at: string }
 
 export interface ApiErrorBody { code: string; message: string; details?: unknown }
+
+/** ADR 0014: a notification and who acknowledged it. */
+export interface AppNotification {
+  id: string; ts: string; created_at: string; severity: "info" | "warning" | "critical";
+  source: "event" | "automation" | "hub" | "device" | "test"; kind: string; title: string; body: string;
+  data: Record<string, unknown>; needs_ack: boolean; acked_at: string | null; acked_by: string | null; acked_by_name: string | null;
+}
+export interface NotificationChannels {
+  telegram: { available: boolean; links: { id: string; username: string | null; created_at: string }[] };
+  push: { available: boolean; public_key: string | null;
+    subscriptions: { id: string; endpoint: string; user_agent: string | null; created_at: string; last_success_at: string | null }[] };
+}
+export interface NotifyPrefs { notify_min_severity: "info" | "warning" | "critical"; receives: boolean }
+export interface TelegramLinkCode { code: string; expires_at: string; bot_username: string | null; url: string | null }

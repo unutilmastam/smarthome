@@ -53,6 +53,8 @@ const P: Record<string, string> = {
   curtain: "M3 3h18M6 3c0 7 1 13 4 18H5M18 3c0 7-1 13-4 18h5",
   window: "M4 3h16v18H4zM12 3v18M4 12h16",
   speaker: "M6 2h12v20H6zM12 18a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 6h.01",
+  send: "M22 2 11 13M22 2l-7 20-4-9-9-4z",
+  phone: "M7 2h10v20H7zM11 18h2",
   bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0",
   siren: "M7 18v-6a5 5 0 0 1 10 0v6M5 21h14v-3H5zM12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4",
   car: "M5 17h14v-5l-2-5H7l-2 5zM5 12h14M7.5 17v2M16.5 17v2M8 14.5h.01M16 14.5h.01",

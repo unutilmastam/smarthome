@@ -31,6 +31,8 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [],
+        // Web Push: show notifications, "Ko'rdim" action (ADR 0014).
+        importScripts: ["push-sw.js"],
       },
     }),
   ],

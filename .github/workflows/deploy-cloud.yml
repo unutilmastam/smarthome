@@ -112,6 +112,7 @@ jobs:
             "APP_DIR=\"\$HOME/$APP\" WEB_DIR=\"\$HOME/$WEB\" STAGE_DIR=\"\$HOME/sh-deploy/incoming\" \
              STATE_DIR=\"\$HOME/sh-deploy\" VENV_ACTIVATE='$VENV' EXPECT_BUILD='$GITHUB_SHA' \
              HEALTH_URL='$PUBLIC_URL/api/v1/health' INIT_DATABASE_URL='$INIT_DB' \
+             TELEGRAM_BOT_TOKEN='$TG_TOKEN' PUBLIC_BASE_URL='$PUBLIC_URL' \
              bash \"\$HOME/sh-deploy/incoming/deploy.sh\"" 2>&1 | tee deploy.log
           code=${PIPESTATUS[0]}
           echo "code=$code" >> "$GITHUB_OUTPUT"

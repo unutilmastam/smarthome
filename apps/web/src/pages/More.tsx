@@ -10,6 +10,7 @@ export function More() {
   const items = [
     { to: "/security", icon: "shield", label: t("nav.security"), tone: "tone-alert" },
     { to: "/automations", icon: "play", label: t("nav.automations"), tone: "tone-power" },
+    { to: "/notifications", icon: "alert", label: t("nav.notifications"), tone: "tone-alert" },
     { to: "/events", icon: "bell", label: t("nav.events"), tone: "tone-light" },
     { to: "/cameras", icon: "camera", label: t("nav.cameras"), tone: "tone-camera" },
     { to: "/hub", icon: "hub", label: t("nav.hub"), tone: "tone-power" },

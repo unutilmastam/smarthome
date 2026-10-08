@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Automation, AutomationRun, Command, Device, EnergySummary, Home, HomeEvent, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
+import type { AppNotification, Automation, AutomationRun, Command, Device, EnergySummary, Home, HomeEvent, Hub, Member, Room, SessionInfo, NotificationChannels, NotifyPrefs, TelemetryPoint } from "./types";
 
 /** Device state refresh when realtime is not available (ARCHITECTURE 2.A: 3 s). */
 export const POLL_MS = 3000;
@@ -71,3 +71,18 @@ export const useAutomations = (home?: string) =>
 export const useAutomationRuns = (id?: string) =>
   useQuery({ queryKey: ["automation-runs", id ?? ""], enabled: !!id, refetchInterval: 10_000,
     queryFn: () => api.get<AutomationRun[]>(`/automations/${id}/runs?limit=50`) });
+
+/** Notifications (ADR 0014). meta.unacked = warning/critical nobody has acknowledged yet. */
+export const useNotifications = (home?: string, unacked = false, limit = 100) =>
+  useQuery({ queryKey: ["notifications", home ?? "", unacked, limit], enabled: !!home, refetchInterval: 15_000,
+    queryFn: async () => {
+      const r = await api.page<AppNotification[]>(`/homes/${home}/notifications?limit=${limit}${unacked ? "&unacked=true" : ""}`);
+      return { items: r.data, unacked: Number(r.meta.unacked ?? 0) };
+    } });
+
+export const useNotificationChannels = () =>
+  useQuery({ queryKey: ["notification-channels"], queryFn: () => api.get<NotificationChannels>("/notifications/settings") });
+
+export const useNotifyPrefs = (home?: string) =>
+  useQuery({ queryKey: ["notify-prefs", home ?? ""], enabled: !!home,
+    queryFn: () => api.get<NotifyPrefs>(`/homes/${home}/notification-prefs`) });

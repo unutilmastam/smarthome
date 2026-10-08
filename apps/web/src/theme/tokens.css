@@ -456,3 +456,23 @@ label.inline { gap: 4px; }
 .auto-card.on .ico { color: #fff; background: var(--t-power); box-shadow: 0 6px 18px color-mix(in srgb, var(--t-power) 45%, transparent); }
 .auto-card .pswitch { --tone: var(--t-power); }
 .auto-summary { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+
+/* ---- Notifications (ADR 0014) ---- */
+a.btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-2); color: inherit; text-decoration: none; font-weight: 600; font-size: 14px; }
+button.small { min-height: 36px; padding: 0 14px; font-size: 14px; flex: none; }
+.event.unacked { box-shadow: inset 3px 0 0 var(--sev); border-radius: var(--radius-sm); }
+.event .acked { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-size: 13px; }
+.bell { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  color: inherit; background: var(--surface-2); border: 1px solid var(--border); flex: none; }
+.bell .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.bell.alerting { --sev: var(--danger); color: var(--danger); animation: pulse-sev 1.6s infinite; }
+.channel { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.channel:first-of-type { border-top: 0; }
+.channel > .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.channel .body { flex: 1; min-width: 0; display: grid; gap: 8px; }
+.link-code { font: 700 26px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; padding: 10px 14px;
+  border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--border); text-align: center; user-select: all; }
+.ok-text { color: var(--ok); }

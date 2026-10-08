@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useHubs } from "../api/hooks";
+import { useHubs, useNotifications } from "../api/hooks";
 import { can } from "../lib/contracts";
 import { useCurrentHome } from "../lib/home";
 import { isLocalHub } from "../lib/local";
@@ -26,6 +26,9 @@ export function Layout() {
   const active = (hubs.data ?? []).filter((h) => h.status === "active");
   const hubOnline = active.some((h) => h.online);
   const owner = can(home?.my_role, "manage_users");
+  const notes = useNotifications(home?.id, true, 20);
+  const unacked = notes.data?.unacked ?? 0;
+  const critical = (notes.data?.items ?? []).some((n) => n.severity === "critical");
 
   const all = [
     { to: "/", icon: "home", label: t("nav.dashboard"), end: true },
@@ -62,6 +65,10 @@ export function Layout() {
                 {homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
               </select>
             )}
+            <Link to="/notifications" className={`bell ${critical ? "alerting" : ""}`} data-testid="bell"
+              aria-label={unacked ? t("notify.bellOpen", { count: unacked }) : t("notify.title")}>
+              <Icon name="bell" size={20} />{unacked > 0 && <span className="badge">{unacked > 99 ? "99+" : unacked}</span>}
+            </Link>
             <AddButton compact />
             <span className={`live ${mode === "realtime" ? "on" : ""}`} title={t(mode === "realtime" ? "banner.realtime" : "banner.polling")}>
               <i />{mode === "realtime" ? "live" : "3s"}

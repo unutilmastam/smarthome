@@ -5,6 +5,7 @@ import { api, ApiError } from "../api/client";
 import { qk, useSessions } from "../api/hooks";
 import { useSession } from "../auth/session";
 import { errorText } from "../components/CommandStatus";
+import { NotificationSettings } from "../components/NotificationSettings";
 import { LANGUAGES, setLanguage, type Lang } from "../i18n";
 import { usePrefs } from "../lib/prefs";
 import { can } from "../lib/contracts";
@@ -56,6 +57,7 @@ export function Settings() {
           </select>
         </label>
       </section>
+      <NotificationSettings />
       <HomeLocation />
 
       <form className="card" onSubmit={async (e) => {

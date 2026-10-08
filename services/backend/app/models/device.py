@@ -38,6 +38,8 @@ class Device(UUIDPk, Timestamps, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     availability: Mapped[str] = mapped_column(String(16), default="unknown", nullable=False)
     availability_ts: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
+    # ADR 0014 watchdog: set when "device offline" was announced, cleared when it is back.
+    offline_notified_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
 
     capabilities: Mapped[list["DeviceCapability"]] = relationship(
         back_populates="device",

@@ -137,6 +137,27 @@ def test_first_deploy_creates_env_and_backup(server):
     assert "ENV=production" in text and len(text.split("JWT_SECRET=")[1].split()[0]) == 64
     assert len(list((server.state / "backups").glob("pre-deploy-*.sql.gz"))) == 1
     assert (server.web / "index.html").exists()
+    # ADR 0014: generated on the server, never printed.
+    assert len(text.split("TELEGRAM_WEBHOOK_SECRET=")[1].split()[0]) == 64
+    assert len(text.split("VAPID_PRIVATE_KEY=")[1].split()[0]) == 43
+    assert "VAPID_PRIVATE_KEY=" not in log and "TELEGRAM_WEBHOOK_SECRET=" not in log
+
+
+def test_bot_token_and_public_url_are_written_to_env_and_kept(server):
+    server.release("v1")
+    # No bot token here: the webhook is never contacted from a test.
+    extra = {"TELEGRAM_BOT_TOKEN": "", "PUBLIC_BASE_URL": "https://home.example.uz"}
+    code, out, log = server.deploy("v1", first=True, extra=extra)
+    assert code == 0, log
+    text = (server.app / ".env").read_text()
+    assert "PUBLIC_BASE_URL=https://home.example.uz" in text
+    secret = text.split("TELEGRAM_WEBHOOK_SECRET=")[1].split()[0]
+    server.release("v2")
+    assert server.deploy("v2", extra=extra)[0] == 0
+    again = (server.app / ".env").read_text()
+    assert again.split("TELEGRAM_WEBHOOK_SECRET=")[1].split()[0] == secret      # not rotated
+    assert again.count("PUBLIC_BASE_URL=") == 1
+    assert oct((server.app / ".env").stat().st_mode & 0o777) == "0o600"
 
 
 def test_good_deploy_then_broken_migration_rolls_back(server):

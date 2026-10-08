@@ -259,8 +259,9 @@ energy_daily   (device_id, date, kwh, cost)              -- doimiy
 automations (home_id, name, definition json, version, enabled)        -- ADR 0013
 automation_runs (automation_id, version, trigger, result, reason, actions, ts)
 schedules
-notifications (severity, source, title, body, acked_by, acked_at)
-push_subscriptions, telegram_links
+notifications (home_id, severity, source, kind, title, body, data, ts, dedupe_key, acked_by, acked_at, reminded_at) -- 180 kun (ADR 0014)
+notification_deliveries (notification_id, user_id, channel, target, status, attempts, next_attempt_at)
+push_subscriptions (user_id, endpoint, p256dh, auth), telegram_links (user_id, chat_id), telegram_link_codes (sha256, 10 daq)
 cameras (hub_id, name, frigate_name, room_id)   -- VIDEO YO'Q
 events (home_id, device_id, type, severity, ts, data)   -- voqealar tasmasi, 180 kun (ADR 0012)
 audit_log (actor, action, target, ip, ts, details)
@@ -282,7 +283,10 @@ commands:      POST /commands, GET /commands/{id}, POST /groups/{id}/commands
 automations:   /homes/{id}/automations, /automations/{id}, /automations/{id}/runs, POST /homes/{id}/automations:validate
 energy:        /energy/summary?period=, /energy/circuits/{id}
 events:        GET /homes/{id}/events (severity, capability, device_id, before) — ADR 0012
-notifications: /notifications, POST /notifications/{id}/ack, /push/subscribe
+notifications: GET /homes/{id}/notifications, POST /notifications/{id}/ack, /notifications/{id}/ack-token (Push tugmasi),
+               GET /notifications/settings, POST /notifications/telegram/link, /notifications/push/subscribe|unsubscribe,
+               GET/PUT /homes/{id}/notification-prefs, POST /homes/{id}/notifications:test — ADR 0014
+telegram:      POST /telegram/webhook (faqat Telegram, maxfiy sarlavha bilan)
 cameras:       /cameras (metadata), GET /cameras/{id}/access  -> Tailscale/lokal URL
 health:        /health, /homes/{id}/health
 audit:         /audit
@@ -295,7 +299,7 @@ hub (Hub uchun, hub token bilan):
                GET  /hub/config      (qurilmalar, avtomatikalar — sinxron)
 ```
 - Javob formati: `{ "data": ..., "error": null, "meta": {...} }`.
-- Xato kodlari: `AUTH_REQUIRED, INVALID_CREDENTIALS, FORBIDDEN, NOT_FOUND, CONFLICT, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE, PIN_REQUIRED, PIN_INVALID, DEVICE_DISABLED`.
+- Xato kodlari: `AUTH_REQUIRED, INVALID_CREDENTIALS, FORBIDDEN, NOT_FOUND, CONFLICT, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE, PIN_REQUIRED, PIN_INVALID, DEVICE_DISABLED, NOT_CONFIGURED` (`NOT_CONFIGURED` — serverda kanal sozlanmagan, ADR 0014).
 - A'zo bo'lmagan uyning resurslari → `404 NOT_FOUND` (403 emas, ID taxmin qilinmasin). A'zo, lekin ruxsat yo'q → `403 FORBIDDEN`.
 - OpenAPI `/api/v1/docs` (productionda faqat admin).
 
@@ -372,11 +376,11 @@ Format: `packages/contracts/schemas/automation.schema.json` (ADR 0013). Misol (U
 | Internet uzildi | Hub, avtomatika, kamera yozuvi ishlashda davom etadi. Telemetriya SQLite'da to'planadi. Uyda PWA `hub.local` orqali ishlaydi |
 | Internet qaytdi | Hub buferni yuboradi, holatlarni qayta e'lon qiladi, muddati o'tgan buyruqlarni bajarmaydi |
 | Svet o'chdi, qaytdi | Har bir rele `restore_mode` bo'yicha (standart: OFF; chiroqlar sozlanadi). Nasos — har doim OFF |
-| ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin) |
+| ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin; Hub o'zi aloqasiz bo'lsa — alohida xabar yo'q, ADR 0014) |
 | Lokal broker yiqildi | Docker `restart: always`, Hub salomatligi `degraded` |
 | Cloud broker yo'q | Buyruqlar HTTPS polling orqali davom etadi (ADR 0005). Hub ham yetib bo'lmasa (`last_seen` eskirgan) — `503 HUB_UNREACHABLE`, buyruq yaratilmaydi, PWA aniq xabar ko'rsatadi |
 | HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ogohlantirish |
-| Hub o'zi o'chdi | Cloud `hubs.last_seen` > 3 daq → kritik bildirishnoma (Telegram) |
+| Hub o'zi o'chdi | Cloud cron (har daqiqa): `hubs.last_seen` > 150 s → kritik bildirishnoma (Telegram + Push) — 3 daqiqa ichida; qaytganda "Hub qayta ulandi" (ADR 0014) |
 
 ---
 

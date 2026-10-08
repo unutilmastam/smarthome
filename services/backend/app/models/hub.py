@@ -26,6 +26,8 @@ class Hub(UUIDPk, Timestamps, Base):
     tailnet_host: Mapped[Optional[str]] = mapped_column(String(253))
     lan_host: Mapped[Optional[str]] = mapped_column(String(253))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
+    # ADR 0014 watchdog: set when "hub offline" was announced, cleared when it is back.
+    offline_notified_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
 
     __table_args__ = (
         CheckConstraint("status IN ('active','revoked')", name="status_valid"),

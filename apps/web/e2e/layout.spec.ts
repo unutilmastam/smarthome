@@ -8,7 +8,7 @@ test("no horizontal overflow on any main page", async ({ page }, info) => {
   await page.getByRole("button", { name: "Kirish" }).click();
   await expect(page.getByRole("heading", { name: "Uy" })).toBeVisible();
   const expected = info.project.use.viewport?.width;
-  for (const path of ["/", "/rooms", "/devices", "/energy", "/cameras", "/hub", "/settings", "/members", "/security", "/events", "/automations"]) {
+  for (const path of ["/", "/rooms", "/devices", "/energy", "/cameras", "/hub", "/settings", "/members", "/security", "/events", "/automations", "/notifications"]) {
     await page.goto(path);
     await page.waitForTimeout(300);
     const m = await page.evaluate(() => ({ vw: window.innerWidth, sw: document.documentElement.scrollWidth }));

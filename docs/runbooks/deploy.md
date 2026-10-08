@@ -21,8 +21,10 @@ Quyidagi narsalar **faqat bir marta** qilinadi.
    - Telegram'da @BotFather → `/newbot` → token oling;
    - botga istalgan xabar yozing;
    - brauzerda `https://api.telegram.org/bot<TOKEN>/getUpdates` ni oching va `chat.id` ni oling.
+   - Shu bot uy bildirishnomalarini ham yuboradi (ADR 0014). Deploy tokenni serverdagi `.env` ga yozadi va webhook'ni o'zi o'rnatadi. Shundan keyin `getUpdates` ishlamaydi — bu normal holat. Chat id'ni webhook yoqilishidan **oldin** oling.
+   - Har bir oila a'zosi botni ilovada ulaydi: Sozlamalar → Bildirishnomalar → "Telegram'ni bog'lash".
 
-`.env` faylini qo'lda yaratish **shart emas**: birinchi deploy uni o'zi yaratadi. JWT va signing kalitlari serverning o'zida generatsiya qilinadi va GitHub'ga chiqmaydi.
+`.env` faylini qo'lda yaratish **shart emas**: birinchi deploy uni o'zi yaratadi. JWT va signing kalitlari serverning o'zida generatsiya qilinadi va GitHub'ga chiqmaydi. Telegram webhook siri va Web Push (VAPID) kaliti ham serverda generatsiya qilinadi. Yangi Secret kerak emas: `TELEGRAM_BOT_TOKEN` va `PUBLIC_URL` deploy paytida `.env` ga yoziladi.
 
 ## B. GitHub Secrets (yagona ro'yxat)
 GitHub → repo → Settings → Secrets and variables → Actions → **New repository secret**:

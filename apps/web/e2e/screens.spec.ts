@@ -39,4 +39,11 @@ test("screenshots", async ({ page }, info) => {
   await dlg.getByRole("button", { name: /Buyruq/ }).click();
   await dlg.getByRole("combobox", { name: "Qurilma", exact: true }).last().selectOption({ label: "Bog' chiroqlari" });
   await page.screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-automation-editor.png` });
+  await page.keyboard.press("Escape");
+  await page.goto("/notifications");
+  await page.getByTestId("notification-cover.sensor_conflict").waitFor();
+  await page.screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-notifications.png`, fullPage: true });
+  await page.goto("/settings#notifications");
+  await page.locator("#notifications").getByText("Telegram").waitFor();
+  await page.locator("#notifications").screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-notify-settings.png` });
 });

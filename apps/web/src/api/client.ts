@@ -71,5 +71,6 @@ export const api = {
   page: <T>(p: string) => request<T>("GET", p),
   post: <T>(p: string, b?: unknown) => request<T>("POST", p, b ?? {}).then((r) => r.data),
   patch: <T>(p: string, b: unknown) => request<T>("PATCH", p, b).then((r) => r.data),
+  put: <T>(p: string, b: unknown) => request<T>("PUT", p, b).then((r) => r.data),
   del: <T>(p: string) => request<T>("DELETE", p).then((r) => r.data),
 };

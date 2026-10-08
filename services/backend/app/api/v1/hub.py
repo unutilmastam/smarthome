@@ -25,6 +25,7 @@ from app.services.device_view import iso
 from app.services.automations import hub_view as automations_for_hub
 from app.services.automation_runs import ingest as ingest_runs
 from app.services.events import ingest as ingest_events
+from app.services.notifications import dispatch_now
 from app.services.hub_reports import apply_report
 from app.services.telemetry import ingest as ingest_telemetry
 
@@ -144,14 +145,22 @@ def post_telemetry(body: dict = Body(...), hub: Hub = Depends(get_hub),
 
 @router.post("/events")
 def post_events(body: dict = Body(...), hub: Hub = Depends(get_hub),
-                db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
+                db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts),
+                settings: Settings = Depends(get_settings)):
     _validate(contracts, "hub-events.schema.json", body)
-    return ok(ingest_events(db, hub, contracts, body))
+    created: list = []
+    result = ingest_events(db, hub, contracts, body, created)
+    dispatch_now(db, settings, created)   # alarms reach phones now, not at the next cron minute
+    return ok(result)
 
 
 @router.post("/automation-runs")
 def post_automation_runs(body: dict = Body(...), hub: Hub = Depends(get_hub),
                          db: Session = Depends(get_db),
-                         contracts: Contracts = Depends(get_contracts)):
+                         contracts: Contracts = Depends(get_contracts),
+                         settings: Settings = Depends(get_settings)):
     _validate(contracts, "hub-automation-runs.schema.json", body)
-    return ok(ingest_runs(db, hub, body))
+    created: list = []
+    result = ingest_runs(db, hub, body, created)
+    dispatch_now(db, settings, created)
+    return ok(result)

@@ -18,6 +18,7 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 10 | Kameralar (lokal) | qisman: bulut tomoni va Hub monitoringi `[SIM]`; Frigate va kameralar apparatda sinalmagan |
 | 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | qisman: shartnoma, Hub, proshivka, UI va nosozlik testlari `[SIM]` tugadi; **apparatda sinalmagan** (`[REAL]` jadvallar bo'sh, inventar H-05/H-06/H-11/H-13 ochiq) |
 | 12 | Avtomatika (Hub'da) | tugadi `[SIM]`: format, validatsiya, Hub dvigateli, vizual muharrir; haqiqiy uyda sinalmagan |
+| 13 | Bildirishnomalar | tugadi `[SIM]`: Telegram (webhook, bog'lash kodi, "Ko'rdim"), Web Push (VAPID), nazoratchi cron, tasdiqlash; haqiqiy bot va telefonda sinalmagan |
 
 ---
 
@@ -861,3 +862,69 @@ Tasdiqlanmagan taxminlar:
 - Uy koordinatalari kiritilmagan (H-14). Ularsiz quyosh qoidalari saqlanmaydi.
 
 Keyingi faza: 13 — Bildirishnomalar.
+
+## Faza 13 — Bildirishnomalar — 2026-10-08
+Holat: tugadi `[SIM]`. Telegram va Push servislari testlarda soxta HTTP transport bilan almashtirilgan. Haqiqiy bot va telefonda **sinalmagan**.
+
+Qilingan ishlar:
+- **ADR 0014:** manbalar, qabul qiluvchilar, kanallar, yetkazish, tasdiqlash, eslatma. ARCHITECTURE 7, 8, 12-bo'limlar yangilandi.
+- **Backend:**
+  - Migratsiya 0008 (expand-only):
+    - yangi jadvallar: `notifications`, `notification_deliveries`, `telegram_links`, `telegram_link_codes`, `push_subscriptions`;
+    - yangi ustunlar: `home_members.notify_min_severity` (`server_default` `warning`), `hubs`/`devices.offline_notified_at`.
+  - **Manbalar:**
+    - Hub'dan kelgan har bir yangi voqea (`event:<id>`, takrorlanmaydi);
+    - avtomatikaning `notify` harakati (`run:<id>:<n>`) — Faza 12 dagi "telefonga kelmaydi" cheklovi yopildi;
+    - nazoratchi cron: Hub 150 s jim bo'lsa → **kritik** (cron har daqiqada ishlaydi, ya'ni 3 daqiqa ichida), Hub qaytsa → xabar;
+    - qurilma 5 daqiqa `offline` bo'lsa → ogohlantirish. Hub o'zi aloqasiz bo'lsa, qurilmalar haqida alohida xabar berilmaydi.
+  - **Kimga:** egasi, admin va oila a'zolari, har kim o'zi tanlagan darajadan (standart `warning`) yuqori xabarlarni oladi; kritik xabar har doim yuboriladi. Mehmon va kuzatuvchi olmaydi.
+  - **Telegram:**
+    - webhook `X-Telegram-Bot-Api-Secret-Token` sarlavhasi bilan tekshiriladi, sir noto'g'ri bo'lsa 404 qaytadi;
+    - bog'lash 8 belgili bir martalik kod bilan (10 daqiqa, bazada faqat SHA-256), faqat shaxsiy chat orqali; `/stop` bog'lanishni uzadi;
+    - xabarda "✅ Ko'rdim" tugmasi bor; bosilganda xabar "Ko'rildi — Ism" ga o'zgaradi;
+    - bot bloklansa, bog'lanish o'chiriladi.
+  - **Web Push:**
+    - RFC 8291 (aes128gcm) va RFC 8292 (VAPID) `cryptography` bilan yozildi. **RFC 8291 test vektori bilan bayt-ma-bayt mos keladi**, testda brauzer kabi qayta shifrdan ochiladi;
+    - endpoint faqat haqiqiy push servislariga ruxsat etiladi (SSRF himoyasi);
+    - 404/410 javobi kelsa, obuna o'chiriladi;
+    - "Ko'rdim" tugmasi bildirishnoma × foydalanuvchi uchun HMAC-token bilan ishlaydi.
+  - **Yetkazish:**
+    - `warning` va `critical` darhol, Hub so'rovi ichida yuboriladi (≤ 5 s); qolganlari `app.jobs.notify` cron'ida (har daqiqa);
+    - qayta urinishlar 1/2/4/8 daqiqada, 5-urinishdan keyin `failed`;
+    - `pending → sending` holatiga shartli o'tkazish ikki marta yuborilishga yo'l qo'ymaydi; osilib qolgan yozuv 5 daqiqadan keyin qayta urinadi.
+  - **Tasdiqlash:** ilova, Telegram yoki Push orqali; birinchi tasdiqlagan odam yoziladi. Kritik xabar 10 daqiqada tasdiqlanmasa, **bir marta** "🔁 Eslatma" yuboriladi.
+  - Sinov xabari endpoint'i har bir kanal bo'yicha haqiqiy natijani qaytaradi. Sozlanmagan kanal uchun `503 NOT_CONFIGURED`. Saqlash muddati: 180 kun.
+- **Deploy:**
+  - `TELEGRAM_BOT_TOKEN` (mavjud Secret) va `PUBLIC_URL` serverdagi `.env` ga yoziladi;
+  - webhook siri va VAPID kaliti **serverning o'zida** yaratiladi va qayta deploy'da almashtirilmaydi; `.env` ruxsati 600;
+  - sog'liq tekshiruvidan keyin `app.jobs.telegram_setup` webhook'ni o'rnatadi; bu qadam yiqilsa ham deploy yiqilmaydi;
+  - yangi cron qatori: `app.jobs.notify`.
+  - **Yangi GitHub Secret kerak emas.**
+- **PWA:**
+  - Yuqori panelda qo'ng'iroqcha: tasdiqlanmaganlar soni; kritik xabar bo'lsa, qizil pulsatsiya.
+  - "Bildirishnomalar" sahifasi: matn voqealar tasmasi va Telegram bilan bir xil, zona nomi qurilma nomi bilan ko'rsatiladi; "Ko'rdim" tugmasi; kim va qachon ko'rgani.
+  - Sozlamalar → Bildirishnomalar:
+    - Telegram'ni bog'lash: kod, `t.me` havolasi, bog'lanish avtomatik aniqlanadi;
+    - shu qurilmada Push'ni yoqish;
+    - **iPhone/iPad'da Push faqat o'rnatilgan PWA'da ishlashi ochiq aytiladi**;
+    - daraja tanlash, sinov tugmasi.
+  - Service worker'da push qabul qilish va "Ko'rdim" amali (`push-sw.js`).
+
+Testlar:
+- Backend: 208 passed (SQLite). Bildirishnoma, migratsiya, voqea va avtomatika testlari **PostgreSQL 16 da ham** o'tdi: 97 passed.
+  - 29 ta yangi test: RFC vektori, VAPID imzosi, bog'lash, webhook siri, kritik xabar darhol yetishi va tugma bilan tasdiqlanishi, boshqa uy yoki bog'lanmagan chat tasdiqlay olmasligi, daraja filtri, kuzatuvchi rolida xabar kelmasligi, backoff va `failed`, bloklangan bot, ikki marta yuborilmaslik, push shifrini ochish va token bilan tasdiqlash, 410, SSRF, Hub o'chishi va qaytishi, qurilma oflayn bo'lishi, eslatma (tasdiqlangan bo'lsa yuborilmaydi), avtomatika xabari, saqlash muddati, production konfiguratsiya tekshiruvi.
+- Deploy skripti: 6 passed (haqiqiy PostgreSQL). Sirlar `.env` da yaratiladi, logga chiqmaydi va qayta deploy'da o'zgarmaydi.
+- Web: vitest 51 passed. Playwright 16 passed: telefon va iPad'da qo'ng'iroqcha → sahifa → "Ko'rdim" → sozlamalar ("serverda sozlanmagan" ochiq aytiladi). Sahifa gorizontal siljimaydi.
+- Hub kodi o'zgarmadi (faqat izoh); hub testlarini CI ishga tushiradi.
+
+Hal qilinmagan xavflar:
+- Uyda internet o'chsa, voqea xabari internet qaytgandan keyin keladi. Matnda voqeaning asl vaqti ko'rsatiladi.
+- Telegram yoki push servisi uzoq vaqt ishlamasa, 5 urinishdan keyin `failed` bo'ladi; ilovadagi ro'yxat baribir to'liq qoladi.
+- Hub qaytgandan keyin qurilmalar holatini qayta yuborguncha eski `offline` holati bitta ortiqcha xabar berishi mumkin.
+
+Tasdiqlanishi kerak `[REAL]`:
+- Haqiqiy bot: deploy'dan keyin webhook o'rnatilganini, bog'lashni, kritik xabarni va "Ko'rdim" tugmasini tekshirish.
+- iPhone'da o'rnatilgan PWA'ga Push (iOS 16.4+), Android Chrome'ga Push.
+- Hub tokini uzib, 3 daqiqa ichida Telegram'ga "Hub aloqasiz" xabari kelishini tekshirish.
+
+Keyingi faza: 14 — Mustahkamlash.

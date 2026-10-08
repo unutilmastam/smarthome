@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     # OpenAPI/Swagger UI. Off in production unless explicitly enabled (ARCHITECTURE 8).
     docs_enabled: Optional[bool] = None
+    # Notifications (ADR 0014). Secrets live only in .env (deploy.sh writes them on the server).
+    public_base_url: Optional[str] = None            # https://home.example.uz (Telegram webhook)
+    telegram_bot_token: Optional[str] = None
+    telegram_webhook_secret: Optional[str] = None
+    telegram_bot_username: Optional[str] = None      # optional: asked from getMe when missing
+    vapid_private_key: Optional[str] = None          # raw P-256 scalar, base64url
+    vapid_subject: Optional[str] = None              # mailto:... or https://... (defaults to public URL)
+    # Watchdog: hub silent this long -> critical (cron runs every minute -> detected < 3 min).
+    hub_offline_alert_s: int = 150
+    device_offline_alert_s: int = 300
+    # Critical and not acked after this long -> sent once more.
+    notify_reminder_s: int = 600
 
     @model_validator(mode="after")
     def _apply_defaults_and_check(self) -> "Settings":
@@ -101,6 +113,10 @@ class Settings(BaseSettings):
                     problems.append("REALTIME_WSS_URL must use wss://")
             if not self.cookie_secure:
                 problems.append("COOKIE_SECURE must be true in production")
+            if self.telegram_bot_token and len(self.telegram_webhook_secret or "") < MIN_SECRET_LENGTH:
+                problems.append("TELEGRAM_WEBHOOK_SECRET: required (>= 32 chars) with a bot token")
+            if self.public_base_url and not self.public_base_url.startswith("https://"):
+                problems.append("PUBLIC_BASE_URL must use https://")
             if self.jwt_secret and self.jwt_secret == self.signing_master_key:
                 problems.append("JWT_SECRET and SIGNING_MASTER_KEY must differ")
             if problems:
@@ -118,6 +134,10 @@ class Settings(BaseSettings):
         if v not in ("none", "emqx_serverless"):
             raise ValueError("REALTIME_PROVIDER must be 'none' or 'emqx_serverless'")
         return v
+
+    @property
+    def push_subject(self) -> Optional[str]:
+        return self.vapid_subject or self.public_base_url
 
     @property
     def is_production(self) -> bool:

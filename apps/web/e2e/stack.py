@@ -151,6 +151,12 @@ for key, name, caps in (("garden_lights", "Bog' chiroqlari", {"switch": {}, "dim
                protocol="mqtt", unsupported=[], availability="unknown")
     d.capabilities = [DeviceCapability(capability=c, config_json=cfg) for c, cfg in caps.items()]
     db.add(d)
+# [SIM] one unacknowledged critical notification for the notifications e2e (ADR 0014).
+from app.db.types import utcnow
+from app.models import Notification
+db.add(Notification(id=uuid.uuid4(), home_id=home.id, severity="critical", source="event",
+                    kind="cover.sensor_conflict", title="Gerkonlar bir-biriga zid", body="",
+                    data={"device_key": "front_gate"}, ts=utcnow(), dedupe_key="e2e:seed"))
 db.commit()
 print(token, derive_home_key(s.signing_master_key, home.id).hex())
 """

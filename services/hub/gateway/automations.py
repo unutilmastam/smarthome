@@ -232,7 +232,7 @@ class AutomationEngine:
                 await asyncio.sleep(a["seconds"])
                 out.append({"type": "delay", "outcome": f"{a['seconds']}s"})
             elif a["type"] == "notify":
-                # Delivery (Telegram/Push) is Phase 13: recorded in the run history for now.
+                # Recorded in the run; the cloud turns it into a Telegram/Push message (ADR 0014).
                 out.append({"type": "notify", "outcome": "recorded",
                             "severity": a.get("severity", "info"), "text": a["text"]})
             elif a["type"] == "command":

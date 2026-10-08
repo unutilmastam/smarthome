@@ -12,6 +12,7 @@ import { Energy } from "./pages/Energy";
 import { HubStatus } from "./pages/HubStatus";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
+import { Notifications } from "./pages/Notifications";
 import { More } from "./pages/More";
 import { Events } from "./pages/Events";
 import { Rooms } from "./pages/Rooms";
@@ -41,6 +42,7 @@ export function App() {
           <Route path="security" element={<Security />} />
           <Route path="events" element={<Events />} />
           <Route path="automations" element={<Automations />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

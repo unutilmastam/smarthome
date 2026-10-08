@@ -227,18 +227,18 @@ Har bir tur uchun alohida qadam: contracts → ESPHome/PlatformIO proshivka → 
 ## Faza 12 — Avtomatika (Hub'da)
 
 - [x] Qoida formati ARCHITECTURE 11-bo'lim; JSON Schema `packages/contracts/schemas/automation.schema.json`.
-- [ ] Backend: saqlash, validatsiya (mavjud qurilma/capability, sikl aniqlash), versiya; Hub `GET /hub/config` orqali oladi.
-- [ ] Hub dvigateli: trigger/shart/harakat, quyosh vaqti (uy koordinatalari), cooldown, `max_runs_per_hour`, manual override, bajarilish tarixi.
-- [ ] UI: vizual muharrir.
-- [ ] Test: loop rad etilishi, internet yo'qda ishlashi.
+- [x] Backend: saqlash, validatsiya (mavjud qurilma/capability, sikl aniqlash), versiya; Hub `GET /hub/config` orqali oladi.
+- [x] Hub dvigateli: trigger/shart/harakat, quyosh vaqti (uy koordinatalari), cooldown, `max_runs_per_hour`, manual override, bajarilish tarixi.
+- [x] UI: vizual muharrir.
+- [x] Test: loop rad etilishi, internet yo'qda ishlashi.
 
 ---
 
 ## Faza 13 — Bildirishnomalar
 
-- [ ] Web Push (VAPID) + Telegram bot (bog'lash kodi bilan).
-- [ ] Hodisalar: ARCHITECTURE asl 5.13 ro'yxati; jiddiylik, tasdiqlash (ack).
-- [ ] Hub o'chsa → cron 3 daq ichida aniqlaydi → Telegram.
+- [x] Web Push (VAPID) + Telegram bot (bog'lash kodi bilan).
+- [x] Hodisalar: ARCHITECTURE asl 5.13 ro'yxati; jiddiylik, tasdiqlash (ack).
+- [x] Hub o'chsa → cron 3 daq ichida aniqlaydi → Telegram.
 
 ---
 

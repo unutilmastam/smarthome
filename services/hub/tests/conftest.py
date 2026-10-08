@@ -16,7 +16,8 @@ SIM_PASSWORD = "sim-device-password"
 GW_PASSWORD = "gateway-password"
 DEVICE_KEYS = ["garden_lights", "main_meter", "living_temp", "garden_radar", "front_gate",
                "ac_bedroom", "garden_valve", "kitchen_leak", "other_lamp", "line_boiler",
-               "ac_living", "front_door", "back_window", "hall_motion", "siren"]
+               "ac_living", "front_door", "back_window", "hall_motion", "siren",
+               "breaker_kitchen"]
 
 MOSQUITTO = shutil.which("mosquitto") or "/usr/sbin/mosquitto"
 MOSQUITTO_PASSWD = shutil.which("mosquitto_passwd") or "/usr/bin/mosquitto_passwd"

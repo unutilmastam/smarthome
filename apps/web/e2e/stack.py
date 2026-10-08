@@ -13,6 +13,7 @@ import signal
 import socket
 import subprocess
 import sys
+import json
 import tempfile
 import time
 from pathlib import Path
@@ -27,6 +28,22 @@ SIM_PW = "sim-device-password"
 GW_PW = "gateway-password"
 
 procs = []
+
+# [SIM] the electrical panel (ADR 0015): key, name, number, rating, curve, poles, tripped
+BREAKERS = [
+    ('brk_oshxona', 'Oshxona', 1, 16, 'C', 1, False),
+    ('brk_mehmonxona', 'Mehmonxona', 2, 16, 'C', 1, False),
+    ('brk_yotoqxona', 'Yotoqxona', 3, 16, 'C', 1, False),
+    ('brk_bolalar', 'Bolalar xonasi', 4, 16, 'C', 1, False),
+    ('brk_hammom', 'Hammom', 5, 16, 'C', 1, False),
+    ('brk_konditsioner', 'Konditsioner', 6, 20, 'C', 1, False),
+    ('brk_kir_mashina', 'Kir yuvish mashinasi', 7, 16, 'C', 1, False),
+    ('brk_suv_isitgich', 'Suv isitgich', 8, 25, 'C', 2, False),
+    ('brk_yorug_1', 'Yoritish 1-qavat', 9, 10, 'B', 1, False),
+    ('brk_yorug_2', 'Yoritish 2-qavat', 10, 10, 'B', 1, False),
+    ('brk_hovli', 'Hovli', 11, 16, 'C', 1, False),
+    ('brk_nasos', 'Nasos', 12, 16, 'C', 1, True),
+]
 
 
 def free_port():
@@ -78,7 +95,7 @@ def main():
     mp = shutil.which("mosquitto_passwd") or "/usr/bin/mosquitto_passwd"
     subprocess.run([mp, "-b", str(passwd), "gateway", GW_PW], check=True)
     subprocess.run([mp, "-b", str(passwd), "garden_lights", SIM_PW], check=True)
-    for key in ("front_gate", "front_door", "siren"):
+    for key in ("front_gate", "front_door", "siren", *[b[0] for b in BREAKERS]):
         subprocess.run([mp, "-b", str(passwd), key, SIM_PW], check=True)
     conf = tmp / "mosquitto.conf"
     conf.write_text(f"listener {mport} 127.0.0.1\nallow_anonymous false\npassword_file {passwd}\n"
@@ -110,7 +127,10 @@ def main():
     sim = tmp / "devices.json"
     sim.write_text('[{"type":"light","key":"garden_lights"},'
                    '{"type":"gate","key":"front_gate","travel_time_s":2},'
-                   '{"type":"contact","key":"front_door"},{"type":"siren","key":"siren"}]')
+                   '{"type":"contact","key":"front_door"},{"type":"siren","key":"siren"},'
+                   + ",".join(json.dumps({"type": "breaker", "key": b[0], "switch_time_s": 0.3,
+                                          "closed": b[0] != "brk_hovli", "tripped": b[6]})
+                              for b in BREAKERS) + ']')
     start([PY, "-m", "simulator", str(sim)], cwd=HUB,
           env={"MQTT_HOST": "127.0.0.1", "MQTT_PORT": str(mport), "SIM_DEVICE_PASSWORD": SIM_PW})
     start([PY, "-m", "gateway"], cwd=HUB, env={
@@ -128,7 +148,7 @@ def main():
         time.sleep(1)
 
 
-SEED = """
+SEED = "BREAKERS = " + repr(BREAKERS) + """
 from app.core.config import get_settings
 from app.core.security import hash_secret, new_token, sha256_hex
 from app.core.signing import derive_home_key
@@ -154,6 +174,12 @@ for key, name, caps in (("garden_lights", "Bog' chiroqlari", {"switch": {}, "dim
 # [SIM] one unacknowledged critical notification for the notifications e2e (ADR 0014).
 from app.db.types import utcnow
 from app.models import Notification
+for key, name, pos, rating, curve, poles, _ in BREAKERS:
+    d = Device(id=uuid.uuid4(), home_id=home.id, key=key, name=name, adapter="esphome", icon="breaker",
+               protocol="mqtt", unsupported=[], availability="unknown")
+    d.capabilities = [DeviceCapability(capability="breaker", config_json={
+        "position": pos, "rating_a": rating, "curve": curve, "poles": poles, "confirm_timeout_s": 5})]
+    db.add(d)
 db.add(Notification(id=uuid.uuid4(), home_id=home.id, severity="critical", source="event",
                     kind="cover.sensor_conflict", title="Gerkonlar bir-biriga zid", body="",
                     data={"device_key": "front_gate"}, ts=utcnow(), dedupe_key="e2e:seed"))

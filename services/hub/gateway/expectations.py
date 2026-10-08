@@ -1,7 +1,7 @@
 """What state proves that a command really happened (ARCHITECTURE 4.3).
 
 `confirmed` is only sent when a state report received AFTER the command matches.
-Capabilities with `confirm_attribute` (cover, lock, contactor, valve, alarm) fail with
+Capabilities with `confirm_attribute` (cover, lock, contactor, breaker, valve, alarm) fail with
 no_feedback when the state does not arrive in time. Others stay `acked`.
 IR devices (source=assumed) are never confirmed by their assumed values; an IR climate
 unit with a current sensor (`climate.running`, ADR 0012) is confirmed by that sensor.
@@ -70,6 +70,8 @@ def expectation(capability: str, action: str, params: dict,
     if capability == "contactor":
         return {"close": _eq("aux_contact_closed", True),
                 "open": _eq("aux_contact_closed", False)}.get(action)
+    if capability == "breaker":
+        return {"close": _eq("closed", True), "open": _eq("closed", False)}.get(action)
     if capability == "valve":
         if action == "open":
             return _eq("open", True) if "valve.flow" in unsupported \

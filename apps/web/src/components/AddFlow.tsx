@@ -8,17 +8,19 @@ import { AddDeviceSheet, AddMenuSheet, RoomSheet } from "./AddForms";
 import { Icon } from "./Icon";
 
 type Mode = null | "menu" | "device" | "room";
+/** Start the device form on a given type, e.g. a breaker in a given panel slot (ADR 0015). */
+export interface DevicePreset { type: string; panel?: string; position?: number }
 interface AddFlow {
-  mode: Mode; room?: Room; defaultRoom: string;
-  open: (mode: Exclude<Mode, null>, opts?: { room?: Room; defaultRoom?: string }) => void;
+  mode: Mode; room?: Room; defaultRoom: string; preset?: DevicePreset;
+  open: (mode: Exclude<Mode, null>, opts?: { room?: Room; defaultRoom?: string; preset?: DevicePreset }) => void;
   close: () => void;
 }
 
 /** One place that owns the "add device / add room / edit room" sheets. */
 export const useAddFlow = create<AddFlow>((set) => ({
   mode: null, defaultRoom: "",
-  open: (mode, opts) => set({ mode, room: opts?.room, defaultRoom: opts?.defaultRoom ?? "" }),
-  close: () => set({ mode: null, room: undefined }),
+  open: (mode, opts) => set({ mode, room: opts?.room, defaultRoom: opts?.defaultRoom ?? "", preset: opts?.preset }),
+  close: () => set({ mode: null, room: undefined, preset: undefined }),
 }));
 
 /** Can the current user add/edit devices and rooms? */
@@ -41,7 +43,7 @@ export function AddButton({ compact = false }: { compact?: boolean }) {
 
 export function AddFlowHost() {
   const { home } = useCurrentHome();
-  const { mode, room, defaultRoom, open, close } = useAddFlow();
+  const { mode, room, defaultRoom, preset, open, close } = useAddFlow();
   const rooms = useRooms(home?.id);
   const devices = useDevices(home?.id, true);
   if (!home || !can(home.my_role, "configure")) return null;
@@ -49,7 +51,7 @@ export function AddFlowHost() {
     <>
       <AddMenuSheet open={mode === "menu"} onClose={close} onDevice={() => open("device")} onRoom={() => open("room")} />
       <AddDeviceSheet open={mode === "device"} onClose={close} homeId={home.id} rooms={rooms.data ?? []}
-        devices={devices.data ?? []} defaultRoom={defaultRoom} />
+        devices={devices.data ?? []} defaultRoom={defaultRoom} preset={preset} />
       <RoomSheet open={mode === "room"} onClose={close} homeId={home.id} room={room} />
     </>
   );

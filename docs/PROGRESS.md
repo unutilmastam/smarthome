@@ -995,3 +995,40 @@ Hal qilinmagan xavflar:
 - UPS va elektr uzilishi sinovi.
 
 Keyingi faza: 15 — Uyni ishga tushirish (apparat kerak).
+
+## Qo'shimcha: Elektr shiti — masofadan boshqariladigan avtomatlar (ADR 0015) — 2026-10-08
+Egasining so'rovi bo'yicha. Holat: tugadi `[SIM]`. Haqiqiy avtomatlarda **sinalmagan**: modeli inventarda hali ochiq, sinov jadvali `docs/hardware/tests/breaker.md` da.
+
+Qilingan ishlar:
+- **Shartnoma:** yangi `breaker` capability.
+  - `closed` — avtomatning o'z kontaktidan keladi va faqat shu buyruqni tasdiqlaydi.
+  - `tripped` — himoya ishlagan.
+  - Sozlamalari: shit nomi, yorliqdagi raqami, nominali (`C16`), qutblar soni.
+  - Xavf darajasi `high`: har bir yoqish va o'chirish PIN bilan bo'ladi, faqat egasi va admin bajaradi, avtomatika bu harakatni qila olmaydi.
+  - Voqealar: `breaker.tripped` (critical, Telegram/Push'ga keladi) va `breaker.close_refused`.
+- **Proshivka** `devices/esphome/circuit-breaker.yaml`: motor operatori, OF (holat) va SD (himoya) kontaktlari.
+  - Himoya ishlagan avtomat masofadan **yoqilmaydi** (`safety_rule`).
+  - Himoya holati noma'lum bo'lsa ham yoqilmaydi.
+  - Konfiguratsiya lokal `esphome config` bilan tekshirildi, kompilyatsiyani CI qiladi.
+- **Hub:** tasdiq faqat `closed` orqali. Simulyatorda `BreakerSim` bor: himoya ishlashi, joyida tiklash, OF kontakt nosozligi.
+- **Ilova:**
+  - Elektr bo'limida haqiqiy shitga o'xshash ko'rinish. Avtomatlar yorliqdagi raqam bo'yicha chapdan o'ngga teriladi, 2P avtomat ikki modul egallaydi.
+  - Har bir modulda raqam, `C16`, richag, qizil/yashil indikator, nom va holat bor.
+  - Noma'lum holatda richag **o'rtada** turadi va bosib bo'lmaydi.
+  - Himoya ishlaganda modul qizil "TRIP" holatida bo'ladi va yoqib bo'lmaydi.
+  - Takrorlangan raqam belgilanadi.
+  - Oxirgi "+" bo'sh joy keyingi bo'sh raqam bilan avtomat qo'shadi.
+  - Avtomat qo'shish formasi: liniya nomi (masalan, "Oshxona"), shit, raqam, qutb, xarakteristika, nominal tok va "quvvatni ham o'lchaydi" belgisi.
+  - Bosh sahifada avtomatlar alohida kartochka bo'lib chiqmaydi, ularning o'rniga shit xulosasi ko'rsatiladi. Himoya ishlasa, banner qizil bo'ladi va avtomat nomini aytadi.
+  - Qurilma tarixida va PIN oynasida avtomat uchun "Yoqish/O'chirish" yoziladi ("Yopish/Ochish" emas).
+
+Testlar:
+- Contracts: 70 passed.
+- Backend: 225 passed. Shu jumladan avtomat konfiguratsiyasi tekshiruvi (7 ta noto'g'ri holat rad etildi) va voqea darajalari.
+- Hub: 90 passed `[SIM]`. To'liq zanjir:
+  - PIN'siz buyruq rad etiladi;
+  - o'chirish va yoqish tasdiqlanadi;
+  - himoya ishlaydi → voqea → masofadan yoqish rad etiladi → joyida tiklangach yoqiladi;
+  - OF kontakt uzilsa, "bajarildi" deb ko'rsatilmaydi.
+- Web: vitest 58 passed. Playwright 18 passed: telefon va iPad'da 12 ta avtomatli shit, PIN bilan o'chirish va yoqish (tasdiqlandi), himoya ishlagan nasos bloklangan.
+- gitleaks: toza.

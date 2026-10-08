@@ -648,8 +648,59 @@ class ContactorSim(SimDevice):
         self._drive(cid, False)
 
 
+class BreakerSim(SimDevice):
+    """Smart circuit breaker in the panel (ADR 0015). `closed` comes from the breaker's own
+    contact; `trip()` simulates the protection (overcurrent): contacts open, `tripped` stays
+    set and a remote close is refused (safety_rule) until `reset_on_site()`.
+    Faults: "aux_broken" (position contact never changes -> no_feedback)."""
+    capabilities = ("breaker",)
+
+    def __init__(self, key, switch_time_s: float = 0.2, closed: bool = True,
+                 tripped: bool = False, **kw):
+        super().__init__(key, **kw)
+        self.switch_time = switch_time_s
+        self.initial = closed and not tripped
+        self.initial_tripped = tripped
+
+    def on_online(self):
+        with self.lock:
+            st = self.state.get("breaker", {"closed": self.initial, "tripped": self.initial_tripped})
+        self.set_and_publish("breaker", dict(st))
+
+    def trip(self) -> None:
+        self.set_and_publish("breaker", {"closed": False, "tripped": True})
+        self.publish_event("breaker.tripped", {"cause": "overcurrent"})
+
+    def reset_on_site(self) -> None:
+        """Someone checked the circuit and reset the breaker by hand (stays open)."""
+        self.set_and_publish("breaker", {"tripped": False})
+
+    def _drive(self, cid, closed: bool):
+        with self.lock:
+            tripped = self.state.get("breaker", {}).get("tripped") is True
+        if closed and tripped:
+            self.ack(cid, "rejected", "safety_rule", "breaker tripped: reset on site first")
+            self.publish_event("breaker.close_refused")
+            return
+        self.ack(cid)
+
+        def settle():
+            if self.fault != "aux_broken":
+                self.set_and_publish("breaker", {"closed": closed})
+        t = threading.Timer(self.switch_time, settle)
+        t.daemon = True
+        t.start()
+
+    def do_breaker_close(self, cid, p):
+        self._drive(cid, True)
+
+    def do_breaker_open(self, cid, p):
+        self._drive(cid, False)
+
+
 TYPES = {
     "light": LightSim, "power_meter": PowerMeterSim, "environment": EnvironmentSim,
     "motion": MotionSim, "leak": LeakSim, "gate": GateSim, "ir_climate": IRClimateSim,
     "valve": ValveSim, "contactor": ContactorSim, "contact": ContactSim, "siren": SirenSim,
+    "breaker": BreakerSim,
 }

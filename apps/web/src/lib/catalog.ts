@@ -25,6 +25,7 @@ export const DEVICE_TYPES: DeviceType[] = [
   { id: "lock", icon: "lock", caps: ["lock"] },
   { id: "irrigation", icon: "sprinkler", caps: ["valve"] },
   { id: "meter", icon: "meter", caps: ["power_meter"] },
+  { id: "breaker", icon: "breaker", caps: ["breaker"] },
   { id: "contactor", icon: "power", caps: ["contactor"] },
   { id: "siren", icon: "siren", caps: ["switch"] },
   { id: "motion", icon: "motion", caps: ["motion"] },
@@ -39,7 +40,7 @@ export const DEVICE_TYPES: DeviceType[] = [
 export const DEVICE_ICONS = [
   "bulb", "lamp", "ceiling", "socket", "plug", "fan", "ac", "heater", "boiler", "tv", "fridge",
   "washer", "speaker", "pump", "sprinkler", "drop", "gate", "garage", "door", "window", "curtain",
-  "lock", "bell", "siren", "motion", "leak", "thermo", "meter", "power", "energy", "solar",
+  "lock", "bell", "siren", "motion", "leak", "thermo", "meter", "breaker", "power", "energy", "solar",
   "charger", "car", "camera", "hub", "devices",
 ];
 

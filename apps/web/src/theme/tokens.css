@@ -476,3 +476,94 @@ button.small { min-height: 36px; padding: 0 14px; font-size: 14px; flex: none; }
 .link-code { font: 700 26px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; padding: 10px 14px;
   border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--border); text-align: center; user-select: all; }
 .ok-text { color: var(--ok); }
+
+/* ---- Electrical panel / "Elektr shiti" (ADR 0015) ----
+   Real-looking DIN panel: grey enclosure, metal rails, white breaker modules side by side.
+   Module colours stay "plastic white" in both themes, like the real thing. */
+:root {
+  --din-box: linear-gradient(180deg, #e7eaef, #d6dbe3);
+  --din-box-edge: #bfc5cf;
+  --din-plate: #c9ced7;
+  --din-rail: linear-gradient(180deg, #eef0f3 0%, #a9b0bb 45%, #8c939e 55%, #d6dae0 100%);
+  --mcb-body: linear-gradient(180deg, #ffffff, #eef0f4);
+  --mcb-edge: #c3c8d1;
+  --mcb-text: #1d2430;
+  --mcb-slot: #2b3039;
+  --mcb-lever: linear-gradient(180deg, #4a5160, #262b34);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --din-box: linear-gradient(180deg, #2a303a, #1f242c);
+    --din-box-edge: #3a414d;
+    --din-plate: #161a20;
+    --mcb-body: linear-gradient(180deg, #eef0f4, #d9dde4);
+  }
+}
+:root[data-theme="dark"] {
+  --din-box: linear-gradient(180deg, #2a303a, #1f242c);
+  --din-box-edge: #3a414d;
+  --din-plate: #161a20;
+  --mcb-body: linear-gradient(180deg, #eef0f4, #d9dde4);
+}
+.din-panel { background: var(--din-box); border: 1px solid var(--din-box-edge); border-radius: 18px; padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), var(--shadow); --mod: 72px; }
+@media (min-width: 700px) { .din-panel { --mod: 74px; } }
+.din-panel > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;
+  padding: 2px 6px 10px; }
+.din-panel > header strong { font-size: 16px; letter-spacing: .02em; }
+.din-panel > header .muted { font-size: 13px; }
+.din-rails { display: grid; grid-template-columns: repeat(auto-fill, var(--mod)); column-gap: 3px; row-gap: 18px;
+  justify-content: center; padding: 14px 8px; border-radius: 12px; background: var(--din-plate);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,.25); isolation: isolate; }
+.din-note { margin: 8px 6px 0; font-size: 13px; }
+.din-empty { display: grid; justify-items: center; gap: 10px; text-align: center; color: var(--muted); }
+
+.mcb { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0;
+  padding: 6px 3px 8px; border-radius: 6px; background: var(--mcb-body); border: 1px solid var(--mcb-edge);
+  color: var(--mcb-text); box-shadow: 0 2px 4px rgba(0,0,0,.18); min-height: 196px; }
+/* the DIN rail: peeks out between neighbouring modules */
+.mcb::before { content: ""; position: absolute; z-index: -1; left: -3px; right: -3px; top: 92px; height: 18px;
+  background: var(--din-rail); }
+.mcb-num { min-width: 30px; padding: 1px 6px; border-radius: 4px; background: #fffbe6; border: 1px solid #e3d9a8;
+  font: 700 13px/18px var(--font); text-align: center; color: #3a3320; }
+.mcb-num.dup { background: #ffe1e6; border-color: var(--danger); color: var(--danger); }
+.mcb-body { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; padding: 4px 0;
+  border-top: 1px solid rgba(0,0,0,.06); border-bottom: 1px solid rgba(0,0,0,.06); }
+.mcb-rating { font: 800 12px/14px var(--font); letter-spacing: .04em; min-height: 14px; color: #3d4452; }
+.mcb-lever { position: relative; width: 28px; height: 62px; min-height: 0; padding: 0; border-radius: 6px; border: 0;
+  background: var(--mcb-slot); box-shadow: inset 0 2px 5px rgba(0,0,0,.6); cursor: pointer; }
+.mcb-lever:disabled { cursor: not-allowed; opacity: 1; }
+.mcb-lever .handle { position: absolute; left: 3px; right: 3px; height: 28px; border-radius: 4px; top: 3px;
+  background: var(--mcb-lever); box-shadow: 0 2px 3px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.25);
+  transition: top .25s var(--ease); color: #fff; font: 700 13px/28px var(--font); text-align: center; }
+.mcb[data-state="off"] .mcb-lever .handle, .mcb[data-state="tripped"] .mcb-lever .handle { top: 31px; }
+.mcb[data-state="unknown"] .mcb-lever .handle { top: 17px; background: linear-gradient(180deg, #9aa2b1, #6f7787); }
+.mcb-lever[data-pending] .handle::after { content: ""; position: absolute; inset: 6px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin .8s linear infinite; }
+.mcb-window { width: 18px; height: 7px; border-radius: 2px; background: #9aa2b1; box-shadow: inset 0 1px 2px rgba(0,0,0,.4); }
+.mcb[data-state="on"] .mcb-window { background: #e5484d; }      /* red = contacts closed, as on real breakers */
+.mcb[data-state="off"] .mcb-window { background: #30a46c; }     /* green = open */
+.mcb[data-state="tripped"] .mcb-window { background: #e5484d; animation: blink 1s steps(2, start) infinite; }
+.mcb-io { font: 600 9px/10px var(--font); letter-spacing: .08em; color: #6b7280; }
+.mcb[data-state="tripped"] .mcb-io { color: var(--danger); font-weight: 800; }
+.mcb-name { font: 700 11.5px/14px var(--font); letter-spacing: -.01em; text-align: center; color: var(--mcb-text); text-decoration: none;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  word-break: normal; overflow-wrap: anywhere; max-width: 100%; }
+.mcb-name.long { font-size: 10px; letter-spacing: -.02em; }
+.mcb-name.xlong { font-size: 9px; letter-spacing: -.03em; }
+.mcb-sub { font-size: 11px; line-height: 13px; color: #5d6779; text-align: center; }
+.mcb-sub .error { font-size: 11px; }
+.mcb-cmd { font-size: 10px; line-height: 12px; text-align: center; font-weight: 700; }
+.mcb-cmd.ok { color: var(--ok); }
+.mcb-cmd.bad { color: var(--danger); }
+.mcb[data-state="tripped"] { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 35%, transparent), 0 2px 4px rgba(0,0,0,.18); }
+.mcb[data-offline] { opacity: .55; }
+.mcb-add { justify-content: center; gap: 10px; background: transparent; border: 2px dashed rgba(255,255,255,.35);
+  color: #c9ced7; box-shadow: none; cursor: pointer; }
+.mcb-add .mcb-num { opacity: .7; }
+.mcb-add::before { display: none; }
+@keyframes blink { 50% { opacity: .25; } }
+.breaker-fields { display: grid; gap: 10px; }
+.breaker-fields label.check { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.breaker-fields label.check input { width: 20px; height: 20px; min-height: 0; flex: none; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { groupPanels } from "../lib/panel";
 import { useDevices, useHubs, useRooms } from "../api/hooks";
 import type { Device } from "../api/types";
 import { DeviceCard } from "../components/DeviceCard";
@@ -45,7 +46,7 @@ export function Dashboard() {
     const on = known.filter((d) => good(d, "switch", "on") === true).length;
     const watts = list.map((d) => good(d, "power_meter", "power")).filter((w): w is number => typeof w === "number");
     const attention = list.filter((d) => d.availability.status === "offline" ||
-      good(d, "leak", "wet") === true).length;
+      good(d, "leak", "wet") === true || good(d, "breaker", "tripped") === true).length;
     return {
       // Never invent: unknown light states are not counted as "off".
       lights: known.length ? `${on}/${lights.length}` : "—",
@@ -57,12 +58,14 @@ export function Dashboard() {
 
   if (devices.isLoading) return <p>{t("app.loading")}</p>;
   if (list.length === 0) return <FirstRun />;
-  const base = pinned.length ? list.filter((d) => pinned.includes(d.id)) : list;
+  // Breakers live in the panel (Elektr): on the home page only a summary, unless pinned (ADR 0015).
+  const base = pinned.length ? list.filter((d) => pinned.includes(d.id)) : list.filter((d) => !d.capabilities.breaker);
   const shown = room ? base.filter((d) => d.room_id === room) : base;
   return (
     <>
       <IrrigationStop devices={list} />
       <AlarmBanner devices={list} />
+      <PanelBanner devices={list} />
       <div className="stats">
         <Stat testid="stat-lights" icon="bulb" tone="tone-light" label={t("dashboard.lightsOn")} value={stats.lights} />
         <Stat testid="stat-power" icon="energy" tone="tone-power" label={t("dashboard.powerNow")} value={stats.power} />
@@ -116,6 +119,26 @@ function AlarmBanner({ devices }: { devices: Device[] }) {
     <Link to="/security" className={`banner alarm-banner state-${st}`} data-testid="alarm-banner">
       <Icon name={st === "disarmed" ? "unlock" : "shield"} />
       <span style={{ flex: 1 }}>{t("security.title")}: <strong>{t(`enum.${st}`, { defaultValue: st })}</strong></span>
+      <Icon name="chevron" size={18} />
+    </Link>
+  );
+}
+
+/** Electrical panel at a glance (ADR 0015): only reported states; tripped breakers named. */
+function PanelBanner({ devices }: { devices: Device[] }) {
+  const { t } = useTranslation();
+  const items = groupPanels(devices).flatMap((p) => p.items);
+  if (!items.length) return null;
+  const tripped = items.filter((i) => i.state === "tripped");
+  const on = items.filter((i) => i.state === "on").length;
+  return (
+    <Link to="/energy" className={`banner alarm-banner panel-banner ${tripped.length ? "state-triggered" : ""}`} data-testid="panel-banner">
+      <Icon name={tripped.length ? "alert" : "breaker"} />
+      <span style={{ flex: 1 }}>
+        {t("panel.title")}: <strong>{tripped.length
+          ? t("panel.bannerTripped", { names: tripped.map((i) => i.device.name).join(", ") })
+          : t("panel.bannerOk", { on, total: items.length })}</strong>
+      </span>
       <Icon name="chevron" size={18} />
     </Link>
   );

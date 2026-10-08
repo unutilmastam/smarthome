@@ -54,6 +54,12 @@ function derivedVisual(d: Device): Visual {
     const p = val(c.climate.attributes.power);
     return { ...base, icon: "ac", tone: "cool", active: p === undefined ? null : !!p, anim: p ? "spinning" : undefined };
   }
+  if (c.breaker) {
+    const closed = val(c.breaker.attributes.closed);
+    const tripped = val(c.breaker.attributes.tripped) === true;
+    return { ...base, icon: "breaker", tone: tripped ? "alert" : "power",
+      active: closed === undefined ? null : !!closed, anim: tripped ? "pulse" : undefined };
+  }
   if (c.contactor) {
     const a = val(c.contactor.attributes.aux_contact_closed);
     return { ...base, icon: "power", tone: "power", active: a === undefined ? null : !!a };

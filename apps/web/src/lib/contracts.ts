@@ -21,3 +21,8 @@ export function can(role: Role | undefined, permission: string): boolean {
 export function hasFeedback(capability: string): boolean {
   return capability !== "climate";
 }
+
+/** "close" is "Yopish" for a gate but "Yoqish" for a breaker: capability-specific label first. */
+export function actionLabel(t: (k: string, o?: Record<string, unknown>) => string, cap: string, action: string): string {
+  return t(`actionCap.${cap}.${action}`, { defaultValue: t(`action.${action}`) });
+}

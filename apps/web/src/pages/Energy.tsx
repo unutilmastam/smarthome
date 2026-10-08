@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { BreakerPanels } from "../components/BreakerPanel";
 import { api, ApiError } from "../api/client";
 import { qk, useDevices, useEnergy, useTelemetry } from "../api/hooks";
 import type { Device, EnergySummary } from "../api/types";
@@ -76,6 +77,8 @@ export function Energy() {
   const devices = useDevices(home?.id, useLive());
   const meters = (devices.data ?? []).filter((d) => "power_meter" in d.capabilities);
   const contactors = (devices.data ?? []).filter((d) => "contactor" in d.capabilities);
+  // Breakers with metering show their power on the panel, not again as a separate meter card.
+  const plainMeters = meters.filter((d) => !d.capabilities.breaker);
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <h2 style={{ margin: 0 }}>{t("energy.title")}</h2>
@@ -83,9 +86,11 @@ export function Energy() {
         <Totals title={t("energy.today")} s={day.data} />
         <Totals title={t("energy.month")} s={month.data} />
       </div>
+      <h3 style={{ margin: 0 }}>{t("panel.title")}</h3>
+      <BreakerPanels devices={devices.data ?? []} role={home?.my_role} />
       <h3 style={{ margin: 0 }}>{t("energy.meters")}</h3>
-      {meters.length === 0 ? <p className="muted">{t("energy.noMeters")}</p> :
-        <div className="grid">{meters.map((d) => <MeterCard key={d.id} device={d} />)}</div>}
+      {plainMeters.length === 0 ? <p className="muted">{t("energy.noMeters")}</p> :
+        <div className="grid">{plainMeters.map((d) => <MeterCard key={d.id} device={d} />)}</div>}
       {contactors.length > 0 && <p className="muted">{t("energy.breakerNote")}</p>}
       {home && can(home.my_role, "configure") &&
         <div style={{ maxWidth: 420 }}><TariffForm homeId={home.id} tariff={home.tariff_per_kwh} currency={home.currency} /></div>}

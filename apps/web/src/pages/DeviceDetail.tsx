@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { actionLabel } from "../lib/contracts";
 import { useDevice, useDeviceCommands, useEvents, useRooms } from "../api/hooks";
 import { EventList } from "../components/EventFeed";
 import { useCanConfigure } from "../components/AddFlow";
@@ -71,7 +72,7 @@ export function DeviceDetail() {
             <tbody>{commands.data.map((c) => (
               <tr key={c.id}>
                 <td>{fmt(c.created_at)}</td>
-                <td>{t(`action.${c.action}`)}</td>
+                <td>{actionLabel(t, c.capability, c.action)}</td>
                 <td><Badge kind={commandBadge(c.status)} label={t(`command.${c.status}`) + (c.reason ? ` (${c.reason})` : "")} /></td>
               </tr>))}
             </tbody>

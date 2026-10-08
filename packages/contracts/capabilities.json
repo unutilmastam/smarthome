@@ -4,7 +4,7 @@
   "risk_levels": {
     "low": "Ordinary control (lights, sockets, climate).",
     "medium": "Can waste water/energy or cause damage if left on (irrigation, pumps).",
-    "high": "Physical access or power cut (gates, locks, contactors). Requires PIN confirmation."
+    "high": "Physical access or power cut (gates, locks, contactors, breakers). Requires PIN confirmation."
   },
   "capabilities": {
     "switch": {
@@ -94,6 +94,35 @@
         "open": { "params": { "type": "object", "additionalProperties": false } }
       },
       "confirm_attribute": "aux_contact_closed"
+    },
+    "breaker": {
+      "title": "Smart circuit breaker (MCB/RCBO) in the electrical panel, remotely switched (ADR 0015)",
+      "permission": "control_power",
+      "risk": "high",
+      "attributes": {
+        "closed": { "type": "boolean", "description": "Main contacts closed, as reported by the breaker itself (position/aux contact). Only this confirms switching." },
+        "tripped": { "type": "boolean", "description": "Protection tripped (overcurrent / short circuit / residual current). Firmware refuses a remote close until the breaker is reset on site." }
+      },
+      "actions": {
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "open": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "closed",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "panel": { "type": "string", "minLength": 1, "maxLength": 40, "description": "Panel (shit) the breaker sits in. Default 'Asosiy shit'." },
+          "position": { "type": "integer", "minimum": 1, "maximum": 99, "description": "Number on the panel label; the app lines breakers up by it, left to right." },
+          "rating_a": { "type": "integer", "enum": [6, 10, 13, 16, 20, 25, 32, 40, 50, 63], "description": "Nominal current, A." },
+          "curve": { "enum": ["B", "C", "D"], "description": "Trip curve printed on the breaker (C16 = curve C, 16 A)." },
+          "poles": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Width in DIN modules (1P = 1 module)." }
+        }
+      },
+      "events": {
+        "tripped": { "severity": "critical", "description": "Protection tripped (firmware). The circuit has no power until the breaker is reset on site." },
+        "close_refused": { "severity": "warning", "description": "Remote close refused because the breaker is tripped (firmware, safety_rule)." }
+      }
     },
     "climate": {
       "title": "Climate",

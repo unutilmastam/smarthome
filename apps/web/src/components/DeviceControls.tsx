@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CapabilityView, Device, Role, Value } from "../api/types";
 import { useCommand } from "../lib/commands";
-import { CAPABILITIES, can, hasFeedback } from "../lib/contracts";
+import { CAPABILITIES, actionLabel, can, hasFeedback } from "../lib/contracts";
 import { useSession } from "../auth/session";
 import { useDevices } from "../api/hooks";
 import { useCurrentHome } from "../lib/home";
@@ -132,10 +132,12 @@ function ButtonsCtl({ cap, view, send, disabled, pending, actions }: CtlProps & 
           pending={pending && a === confirmAttr} big={a === confirmAttr} />
       ))}
       {cap === "contactor" && <p className="muted" style={{ margin: 0 }}>{t("control.auxNote")}</p>}
+      {cap === "breaker" && view.attributes.tripped?.value === true &&
+        <p className="error" role="alert" style={{ margin: 0 }}>{t("panel.trippedHint")}</p>}
       <div className="seg">
         {actions.map((a, i) => (
           <button key={a} className={i === 0 ? "primary" : ""} disabled={disabled}
-            onClick={() => send(cap, a)}><Icon name={cap === "contactor" ? "power" : ACTION_ICON[a] ?? "power"} size={18} /> {t(`action.${a}`)}</button>
+            onClick={() => send(cap, a)}><Icon name={cap === "contactor" || cap === "breaker" ? "power" : ACTION_ICON[a] ?? "power"} size={18} /> {actionLabel(t, cap, a)}</button>
         ))}
       </div>
     </>
@@ -212,6 +214,7 @@ const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
   cover: (p) => <ButtonsCtl {...p} actions={["open", "stop", "close"]} />,
   lock: (p) => <ButtonsCtl {...p} actions={["unlock", "lock"]} />,
   contactor: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
+  breaker: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
   alarm: AlarmCtl,
 };
 
@@ -249,7 +252,7 @@ export function DeviceControls({ device, role, compact = false }: { device: Devi
       })}
       <CommandStatus tracked={tracked} />
       {pinFor && !me?.has_pin && <p className="error">{t("control.noPin")}</p>}
-      <PinDialog open={!!pinFor && !!me?.has_pin} action={pinFor ? t(`action.${pinFor.action}`) : ""}
+      <PinDialog open={!!pinFor && !!me?.has_pin} action={pinFor ? actionLabel(t, pinFor.cap, pinFor.action) : ""}
         onCancel={() => setPinFor(null)}
         onSubmit={(pin) => { const p = pinFor!; setPinFor(null); void send(p.cap, p.action, p.params, pin).catch(() => undefined); }} />
     </div>

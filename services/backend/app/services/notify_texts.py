@@ -15,6 +15,8 @@ EVENT_TEXT: Dict[str, str] = {
     "valve.no_flow": "Suv kelmayapti — klapan yopildi",
     "valve.flow_while_closed": "Yopiq klapandan suv oqyapti!",
     "valve.emergency_stop": "Favqulodda tugma bosildi — klapan yopildi",
+    "breaker.tripped": "Avtomat himoyasi ishladi — liniya tokisiz qoldi",
+    "breaker.close_refused": "Avtomat masofadan yoqilmadi: avval joyida tekshirib, qo'lda tiklang",
     "alarm.armed": "Qo'riqlash yoqildi",
     "alarm.disarmed": "Qo'riqlash o'chirildi",
     "alarm.arm_refused": "Yoqilmadi: ochiq zona ({zones})",

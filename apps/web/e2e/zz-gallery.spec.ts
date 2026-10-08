@@ -65,7 +65,16 @@ test("gallery", async ({ page }, info) => {
   await page.keyboard.press("Escape");
 
   await go("/energy", (p) => expect(p.getByRole("heading", { name: /Elektr/ }).first()).toBeVisible());
+  const panel = page.getByRole("region", { name: "Asosiy shit" });
+  await expect(panel.getByTestId("breaker-brk_oshxona")).toHaveAttribute("data-state", /on|off/, { timeout: 20_000 });
   await shot("10-elektr");
+  await page.waitForTimeout(300);
+  await panel.screenshot({ path: `${process.env.GALLERY_DIR}/${info.project.name}-10b-elektr-shiti.png` });
+  await panel.getByRole("button", { name: "Avtomat qo'shish" }).click();
+  await expect(page.getByLabel("Shitdagi raqami")).toHaveValue("13");
+  await page.getByLabel("Liniya nomi").fill("Garaj");
+  await shot("10c-avtomat-qoshish", false);
+  await page.keyboard.press("Escape");
   await go("/cameras", (p) => expect(p.getByRole("heading", { name: /Kameralar/ }).first()).toBeVisible());
   await shot("11-kameralar");
   await go("/security", (p) => expect(p.getByRole("heading", { name: "Xavfsizlik", exact: true })).toBeVisible());

@@ -6,6 +6,8 @@ import { api, ApiError } from "../api/client";
 import type { Device, Room } from "../api/types";
 import { DEVICE_ICONS, DEVICE_TYPES, KEY_RE, ROOM_ICONS, roomIcon, suggestKey, type DeviceType } from "../lib/catalog";
 import { CAPABILITIES } from "../lib/contracts";
+import { groupPanels, nextPosition } from "../lib/panel";
+import type { DevicePreset } from "./AddFlow";
 import { errorText } from "./CommandStatus";
 import { Icon } from "./Icon";
 import { IconPicker, Sheet } from "./Sheet";
@@ -49,8 +51,13 @@ function RoomChips({ rooms, value, onChange }: { rooms: Room[]; value: string; o
 
 // ---- add device --------------------------------------------------------------------
 
-export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultRoom = "" }: {
+/** Nominal currents allowed by the contract (capabilities.json -> breaker.config.rating_a). */
+const RATINGS: number[] = (CAPABILITIES.breaker as unknown as {
+  config: { properties: { rating_a: { enum: number[] } } } }).config.properties.rating_a.enum;
+
+export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultRoom = "", preset }: {
   open: boolean; onClose: () => void; homeId: string; rooms: Room[]; devices: Device[]; defaultRoom?: string;
+  preset?: DevicePreset;
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -64,29 +71,62 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
   const [keyTouched, setKeyTouched] = useState(false);
   const [caps, setCaps] = useState<string[]>(["switch"]);
   const [maxRuntime, setMaxRuntime] = useState("");
+  // Breaker in the electrical panel (ADR 0015)
+  const [panel, setPanel] = useState("");
+  const [position, setPosition] = useState("");
+  const [rating, setRating] = useState("");
+  const [curve, setCurve] = useState("");
+  const [poles, setPoles] = useState("1");
+  const [metered, setMetered] = useState(false);
   const taken = useMemo(() => devices.map((d) => d.key), [devices]);
+  const panels = useMemo(() => groupPanels(devices), [devices]);
+  const isBreaker = caps.includes("breaker");
+  const keyFor = (n: string) => suggestKey(isBreaker || type?.id === "breaker" ? `avtomat ${n}` : n, taken);
 
-  useEffect(() => {
-    if (!open) return;
-    setType(null); setName(""); setKey(""); setKeyTouched(false); setMaxRuntime(""); setRoom(defaultRoom); reset();
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const freePosition = (p: string) => String(nextPosition(panels.find((x) => x.panel === p.trim())?.items ?? []));
 
-  const choose = (dt: DeviceType) => {
+  const choose = (dt: DeviceType, pre?: DevicePreset) => {
     setType(dt); setIcon(dt.icon); setCaps(dt.caps ?? ["switch"]);
+    if (dt.id === "breaker") {
+      // A breaker is named after its circuit ("Oshxona"), not after its type.
+      const p = pre?.panel ?? panels[0]?.panel ?? "";
+      setName(""); setKey(""); setPanel(p);
+      setPosition(pre?.position ? String(pre.position) : freePosition(p));
+      return;
+    }
     const n = dt.id === "custom" ? "" : t(`dtype.${dt.id}`);
     setName(n);
     if (!keyTouched) setKey(n ? suggestKey(n, taken) : "");
   };
-  const onName = (n: string) => { setName(n); if (!keyTouched) setKey(n.trim() ? suggestKey(n, taken) : ""); };
+
+  useEffect(() => {
+    if (!open) return;
+    setType(null); setName(""); setKey(""); setKeyTouched(false); setMaxRuntime(""); setRoom(defaultRoom); reset();
+    setPanel(""); setPosition(""); setRating(""); setCurve(""); setPoles("1"); setMetered(false);
+    const dt = preset && DEVICE_TYPES.find((x) => x.id === preset.type);
+    if (dt) choose(dt, preset);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onName = (n: string) => { setName(n); if (!keyTouched) setKey(n.trim() ? keyFor(n) : ""); };
   const toggleCap = (c: string) => setCaps(caps.includes(c) ? caps.filter((x) => x !== c) : [...caps, c]);
   const needsRuntime = caps.includes("valve");
   const keyOk = KEY_RE.test(key);
-  const valid = !!name.trim() && keyOk && caps.length > 0 && (!needsRuntime || Number(maxRuntime) >= 1);
+  const pos = Number(position);
+  const positionOk = !isBreaker || (Number.isInteger(pos) && pos >= 1 && pos <= 99);
+  const valid = !!name.trim() && keyOk && caps.length > 0 && (!needsRuntime || Number(maxRuntime) >= 1) && positionOk;
 
   const submit = async () => {
-    const capabilities: Record<string, Record<string, number>> = {};
+    const capabilities: Record<string, Record<string, number | string>> = {};
     for (const c of caps) capabilities[c] = {};
     if (needsRuntime) capabilities.valve = { max_runtime_s: Number(maxRuntime) };
+    if (isBreaker) {
+      const cfg: Record<string, number | string> = { position: pos, poles: Number(poles) };
+      if (panel.trim()) cfg.panel = panel.trim();
+      if (rating) cfg.rating_a = Number(rating);
+      if (curve) cfg.curve = curve;
+      capabilities.breaker = cfg;
+      if (metered) capabilities.power_meter = {};
+    }
     const body: Record<string, unknown> = { key, name: name.trim(), adapter: "esphome", protocol: "mqtt", capabilities, icon };
     if (room) body.room_id = room;
     const created = await run(() => api.post<Device>(`/homes/${homeId}/devices`, body));
@@ -118,9 +158,50 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
               <div className="muted">{caps.map((c) => t(`cap.${c}`)).join(" · ")}</div>
             </div>
           </div>
-          <label>{t("devices.name")}
-            <input required maxLength={120} value={name} onChange={(e) => onName(e.target.value)} />
+          <label>{isBreaker ? t("devices.breakerName") : t("devices.name")}
+            <input required maxLength={120} value={name} onChange={(e) => onName(e.target.value)}
+              placeholder={isBreaker ? t("devices.breakerNamePh") : undefined} />
           </label>
+          {isBreaker && (
+            <fieldset className="pick breaker-fields">
+              <legend>{t("panel.title")}</legend>
+              <label>{t("devices.panel")}
+                <input list="panel-names" maxLength={40} value={panel} placeholder={t("panel.default")}
+                  onChange={(e) => { setPanel(e.target.value); setPosition(freePosition(e.target.value)); }} />
+                <datalist id="panel-names">{panels.filter((p) => p.panel).map((p) => <option key={p.panel} value={p.panel} />)}</datalist>
+              </label>
+              <div className="row2">
+                <label>{t("devices.position")}
+                  <input type="number" inputMode="numeric" required min={1} max={99} value={position}
+                    aria-invalid={!positionOk} onChange={(e) => setPosition(e.target.value)} />
+                </label>
+                <label>{t("devices.poles")}
+                  <select value={poles} onChange={(e) => setPoles(e.target.value)}>
+                    {[1, 2, 3, 4].map((p) => <option key={p} value={p}>{p}P</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="row2">
+                <label>{t("devices.curve")}
+                  <select value={curve} onChange={(e) => setCurve(e.target.value)}>
+                    <option value="">{t("devices.notSet")}</option>
+                    {["B", "C", "D"].map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label>{t("devices.rating")}
+                  <select value={rating} onChange={(e) => setRating(e.target.value)}>
+                    <option value="">{t("devices.notSet")}</option>
+                    {RATINGS.map((r) => <option key={r} value={r}>{r} A</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="check">
+                <input type="checkbox" checked={metered} onChange={(e) => setMetered(e.target.checked)} />
+                {t("devices.metered")}
+              </label>
+              <p className="muted" style={{ margin: 0 }}>{t("devices.breakerNote")}</p>
+            </fieldset>
+          )}
           <RoomChips rooms={rooms} value={room} onChange={setRoom} />
           <IconPicker icons={DEVICE_ICONS} value={icon} onChange={setIcon} label={t("devices.icon")} labelFor={(i) => t(`icon.${i}`)} />
           {type.caps === null && (

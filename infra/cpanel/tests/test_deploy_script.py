@@ -224,3 +224,54 @@ def test_lock_and_failed_backup_abort_without_changes(server):
     assert code == 11 and "pg_dump failed" in out["DETAIL"], log
     env.write_text(good)
     assert server.health()["build"] == "v1"  # nothing was touched
+
+
+def test_deploy_keeps_cpanel_owned_files_in_the_web_root(server):
+    """CloudLinux writes the Passenger config of the /api app into the web root and AutoSSL
+    keeps its challenges there: a deploy must never delete them."""
+    server.release("v1")
+    assert server.deploy("v1", first=True)[0] == 0
+    (server.web / "api").mkdir(exist_ok=True)
+    (server.web / "api" / ".htaccess").write_text("PassengerAppRoot /home/u/smarthome-api\n")
+    (server.web / ".well-known" / "acme-challenge").mkdir(parents=True)
+    (server.web / ".well-known" / "acme-challenge" / "tok").write_text("x")
+    ht = server.web / ".htaccess"
+    block = ("# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN\nPassengerAppRoot \"/x\"\n"
+             "# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END")
+    ht.write_text(block + "\n\n" + ht.read_text())
+    server.release("v2")
+    code, _, log = server.deploy("v2")
+    assert code == 0, log
+    assert (server.web / "api" / ".htaccess").read_text().startswith("PassengerAppRoot")
+    assert (server.web / ".well-known" / "acme-challenge" / "tok").exists()
+    text = ht.read_text()
+    assert text.count("CLOUDLINUX PASSENGER CONFIGURATION BEGIN") == 1 and "RewriteEngine On" in text
+
+
+def test_install_script_first_run_creates_owner_and_update_reuses_answers(server):
+    """The zip's install.sh (manual upload from an iPad) drives the same deploy.sh."""
+    rel = server.release("v9")
+    env = {**os.environ, "SH_NONINTERACTIVE": "1", "HOME": str(server.home),
+           "STATE_DIR": str(server.state), "DOMAIN": "home.example.uz",
+           "APP_DIR": str(server.app), "WEB_DIR": str(server.web),
+           "VENV_ACTIVATE": str(server.activate), "INIT_DATABASE_URL": server.db_url,
+           "HEALTH_URL": f"http://127.0.0.1:{server.port}/api/v1/health", "HEALTH_TIMEOUT": "25",
+           "RESTART_CMD": str(server.restart), "PIP_INSTALL": ":", "SKIP_CRON": "1",
+           "OWNER_EMAIL": "ega@example.uz", "OWNER_NAME": "Ega", "HOME_NAME": "Uy",
+           "OWNER_PASSWORD": "correct-horse-battery"}
+    p = subprocess.run(["bash", str(rel / "install.sh")], env=env, capture_output=True, text=True,
+                       timeout=300)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "O'rnatildi" in p.stdout and "Owner created" in p.stdout
+    assert psql(server.psql_url, "SELECT email FROM users") == "ega@example.uz"
+    conf = (server.state / "install.conf").read_text()
+    assert "home.example.uz" in conf and "postgresql" not in conf      # no secrets remembered
+    assert "PUBLIC_BASE_URL=https://home.example.uz" in (server.app / ".env").read_text()
+    # Update: answers come from install.conf; no new owner, no DB question.
+    rel2 = server.release("v10")
+    env2 = {k: v for k, v in env.items() if k not in ("DOMAIN", "APP_DIR", "WEB_DIR", "INIT_DATABASE_URL")}
+    p = subprocess.run(["bash", str(rel2 / "install.sh")], env=env2, capture_output=True, text=True,
+                       timeout=300)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "Owner created" not in p.stdout
+    assert server.health()["build"] == "v10"

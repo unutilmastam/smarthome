@@ -22,6 +22,11 @@ KEEP_BACKUPS="${KEEP_BACKUPS:-10}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 RESTART_CMD="${RESTART_CMD:-mkdir -p \"$APP_DIR/tmp\" && touch \"$APP_DIR/tmp/restart.txt\"}"
 
+# The web root also holds things cPanel owns: the Passenger config of the /api app
+# (CloudLinux writes api/.htaccess or a block in .htaccess), AutoSSL challenges and cgi-bin.
+# A deploy must never delete them.
+WEB_KEEP=(--exclude '/api/' --exclude '/.well-known/' --exclude '/cgi-bin/')
+
 BACKUPS="$STATE_DIR/backups"
 PREV="$STATE_DIR/previous"
 LOCK="$STATE_DIR/lock"
@@ -82,7 +87,7 @@ printf 'BACKUP=%s\n' "$DUMP"
 HAVE_PREV=0
 if [ -f "$APP_DIR/passenger_wsgi.py" ] && [ -d "$APP_DIR/app" ]; then
   rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$APP_DIR/" "$PREV/api/"
-  mkdir -p "$WEB_DIR" && rsync -a --delete "$WEB_DIR/" "$PREV/web/"
+  mkdir -p "$WEB_DIR" && rsync -a --delete "${WEB_KEEP[@]}" "$WEB_DIR/" "$PREV/web/"
   HAVE_PREV=1
 fi
 
@@ -121,7 +126,7 @@ rollback() {
   log "FAILED: $why -> rolling back"
   if [ "$HAVE_PREV" = 1 ]; then
     rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$PREV/api/" "$APP_DIR/"
-    rsync -a --delete "$PREV/web/" "$WEB_DIR/"
+    rsync -a --delete "${WEB_KEEP[@]}" "$PREV/web/" "$WEB_DIR/"
     $PIP_INSTALL "$APP_DIR/requirements.txt" || log "pip install of previous release failed"
   fi
   if ! restore_db; then
@@ -169,7 +174,14 @@ fi
 mkdir -p "$APP_DIR" "$WEB_DIR"
 rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$STAGE_DIR/api/" "$APP_DIR/" \
   || rollback "code upload into $APP_DIR failed"
-rsync -a --delete "$STAGE_DIR/web/" "$WEB_DIR/" || rollback "web upload failed"
+# Keep a CloudLinux Passenger block from the live .htaccess on top of ours.
+PASSENGER_BLOCK="$(sed -n '/CLOUDLINUX PASSENGER CONFIGURATION BEGIN/,/CLOUDLINUX PASSENGER CONFIGURATION END/p' \
+  "$WEB_DIR/.htaccess" 2>/dev/null || true)"
+rsync -a --delete "${WEB_KEEP[@]}" "$STAGE_DIR/web/" "$WEB_DIR/" || rollback "web upload failed"
+if [ -n "$PASSENGER_BLOCK" ]; then
+  { printf '%s\n\n' "$PASSENGER_BLOCK"; cat "$WEB_DIR/.htaccess"; } > "$WEB_DIR/.htaccess.new" \
+    && mv "$WEB_DIR/.htaccess.new" "$WEB_DIR/.htaccess" || rollback "could not keep the Passenger block in .htaccess"
+fi
 
 log "alembic upgrade head"
 ( cd "$APP_DIR" && python -m alembic upgrade head ) || rollback "alembic upgrade head failed"

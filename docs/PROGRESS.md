@@ -957,6 +957,10 @@ Holat: tugadi. Skanlar va tiklash mashqi haqiqatan bajarildi: lokal, haqiqiy Pos
 4. **Docker log'lari cheklanmagan edi:** endi har servisga 3 × 10 MB.
 5. **Yo'qolgan telefon:** "Barcha qurilmalardan chiqish" endi Push obunalarini ham o'chiradi.
 6. **Runbook'dagi xato maslahat:** `gunzip | psql` usuli mavjud bazada ishlamaydi. U `restore.sh` bilan almashtirildi.
+7. **Rate limit chegarasi (CI'dagi tasodifiy yiqilish orqali topildi):**
+   - Muammo: cheklov soatga bog'langan qat'iy 5 daqiqalik oynada sanardi. Oyna chegarasida (masalan, 12:04:59 va 12:05:00) 20 + 20 = **40 ta** noto'g'ri parol bir necha soniyada qabul qilinardi. `test_ip_rate_limit` testi ham shu sababli ba'zan yiqilardi.
+   - Tuzatish: endi sirpanuvchi oyna bahosi ishlatiladi: oldingi oyna hisobi qolgan ulushiga ko'paytiriladi va joriy oyna hisobiga qo'shiladi. Login, PIN, buyruqlar va realtime cheklovlarining hammasiga tegishli.
+   - Tekshiruv: yangi testlar aniq vaqt bilan; eski kodda 4 tadan 3 tasi yiqildi.
 
 **Zaxiradan tiklash — haqiqatan bajarildi** (`infra/cpanel/restore.sh`, `docs/runbooks/backup-restore.md`):
 - `restore.sh` qadamlari:

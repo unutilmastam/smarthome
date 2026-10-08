@@ -18,10 +18,12 @@ from app.core.contracts import Contracts
 from app.core.errors import validation_error
 from app.core.responses import ok
 from app.db.types import utcnow
-from app.models import Device, Home, Hub
+from app.models import Automation, Device, Home, Hub
 from app.schemas.common import Model
 from app.services.commands import apply_ack, claim_for_hub, expire_due
 from app.services.device_view import iso
+from app.services.automations import hub_view as automations_for_hub
+from app.services.automation_runs import ingest as ingest_runs
 from app.services.events import ingest as ingest_events
 from app.services.hub_reports import apply_report
 from app.services.telemetry import ingest as ingest_telemetry
@@ -125,6 +127,8 @@ def get_config(hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
              "capabilities": {c.capability: c.config_json or {} for c in d.capabilities}}
             for d in devices
         ],
+        "automations": automations_for_hub(db.scalars(
+            select(Automation).where(Automation.home_id == hub.home_id).order_by(Automation.name))),
         "server_time": iso(utcnow()),
     })
 
@@ -143,3 +147,11 @@ def post_events(body: dict = Body(...), hub: Hub = Depends(get_hub),
                 db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
     _validate(contracts, "hub-events.schema.json", body)
     return ok(ingest_events(db, hub, contracts, body))
+
+
+@router.post("/automation-runs")
+def post_automation_runs(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                         db: Session = Depends(get_db),
+                         contracts: Contracts = Depends(get_contracts)):
+    _validate(contracts, "hub-automation-runs.schema.json", body)
+    return ok(ingest_runs(db, hub, body))

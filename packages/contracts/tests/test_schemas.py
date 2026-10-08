@@ -14,6 +14,8 @@ EXPECTED = {
     "local-mqtt.schema.json",
     "telemetry-batch.schema.json",
     "hub-events.schema.json",
+    "automation.schema.json",
+    "hub-automation-runs.schema.json",
 }
 
 UUID1 = "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f"
@@ -237,3 +239,51 @@ def test_hub_events_batch(validator_for):
     assert not v.is_valid({"schema": 1, "events": [{**ev, "id": "x"}]})
     assert not v.is_valid({"schema": 1, "events": [{**ev, "severity": "panic"}]})
     assert not v.is_valid({"schema": 1, "events": [{k: v_ for k, v_ in ev.items() if k != "id"}]})
+
+
+# ---- automations (ADR 0013) -----------------------------------------------------------
+
+RULE = {
+    "triggers": [{"type": "state", "device": "garden_radar", "capability": "motion",
+                  "attribute": "detected", "to": True}],
+    "conditions": [{"type": "sun", "is": "night"},
+                   {"type": "security_mode", "is": ["armed_away", "armed_home"]}],
+    "actions": [{"type": "command", "device": "garden_lights", "capability": "switch",
+                 "action": "turn_on", "auto_off_after_s": 300},
+                {"type": "notify", "severity": "warning", "text": "Bog'da harakat"}],
+    "cooldown_s": 120, "max_runs_per_hour": 20,
+}
+
+
+def test_automation_rule(validator_for):
+    v = validator_for("automation.schema.json")
+    v.validate(RULE)
+    v.validate({"triggers": [{"type": "time", "at": "06:30", "days": ["mon", "fri"]}],
+                "actions": [{"type": "command", "device": "garden_valve", "capability": "valve",
+                             "action": "open", "params": {"duration_s": 600}}]})
+    v.validate({"triggers": [{"type": "sun", "event": "sunset", "offset_min": -15}],
+                "actions": [{"type": "delay", "seconds": 5}]})
+    bad = [
+        {**RULE, "triggers": []},
+        {**RULE, "actions": []},
+        {**RULE, "triggers": [{"type": "time", "at": "25:00"}]},
+        {**RULE, "triggers": [{"type": "sun", "event": "noon"}]},
+        {**RULE, "conditions": [{"type": "security_mode", "is": []}]},
+        {**RULE, "actions": [{"type": "notify", "text": ""}]},
+        {**RULE, "actions": [{"type": "command", "device": "X", "capability": "switch", "action": "turn_on"}]},
+        {**RULE, "max_runs_per_hour": 1000},
+        {**RULE, "script": "rm -rf /"},
+    ]
+    for b in bad:
+        assert not v.is_valid(b), b
+
+
+def test_automation_runs_batch(validator_for):
+    v = validator_for("hub-automation-runs.schema.json")
+    run = {"id": UUID1, "automation_id": UUID2, "version": 3, "ts": TS, "trigger": "motion",
+           "result": "ok", "actions": [{"type": "command", "device": "garden_lights",
+                                        "action": "turn_on", "outcome": "confirmed"}]}
+    v.validate({"schema": 1, "runs": [run]})
+    v.validate({"schema": 1, "runs": [{**run, "result": "skipped", "reason": "manual_override"}]})
+    assert not v.is_valid({"schema": 1, "runs": [{**run, "result": "maybe"}]})
+    assert not v.is_valid({"schema": 1, "runs": [{**run, "version": 0}]})

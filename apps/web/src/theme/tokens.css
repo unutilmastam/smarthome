@@ -435,3 +435,24 @@ fieldset legend { font-size: 14px; color: var(--muted); padding: 0; margin-botto
 @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes alarm-flash { 0% { filter: brightness(1.25); } 100% { filter: brightness(.8); } }
 @keyframes pulse-sev { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sev) 60%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+
+/* ---------- automations (ADR 0013) ---------- */
+.rule-block { padding: 12px; border-radius: var(--radius-md); background: var(--surface-2); gap: 10px; }
+.rule-block legend { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); font-size: 15px; padding: 0 4px; }
+.rule-row { display: grid; gap: 8px; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-solid); box-shadow: var(--shadow); }
+.rule-row-head { display: flex; align-items: center; gap: 8px; }
+.rule-row-head strong { flex: 1; }
+.rule-row-head .ico { width: 30px; height: 30px; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.rule-row-head .icon-btn { width: 34px; min-width: 34px; min-height: 34px; background: transparent; border-color: transparent; }
+.rule-fields { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); align-items: end; }
+.rule-fields .muted, .rule-fields .days { grid-column: 1 / -1; }
+label.inline { gap: 4px; }
+.days button { min-width: 42px; padding: 0 10px; }
+.days button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.rule-advanced summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 6px 0; }
+.auto-card { gap: 10px; }
+.auto-card.off { opacity: .7; }
+.auto-card .ico { color: var(--t-power); background: var(--t-power-bg); }
+.auto-card.on .ico { color: #fff; background: var(--t-power); box-shadow: 0 6px 18px color-mix(in srgb, var(--t-power) 45%, transparent); }
+.auto-card .pswitch { --tone: var(--t-power); }
+.auto-summary { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }

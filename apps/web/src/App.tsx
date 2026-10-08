@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useSession } from "./auth/session";
 import { Layout } from "./components/Layout";
+import { Automations } from "./pages/Automations";
 import { Cameras } from "./pages/Cameras";
 import { Dashboard } from "./pages/Dashboard";
 import { DeviceDetail } from "./pages/DeviceDetail";
@@ -39,6 +40,7 @@ export function App() {
           <Route path="more" element={<More />} />
           <Route path="security" element={<Security />} />
           <Route path="events" element={<Events />} />
+          <Route path="automations" element={<Automations />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

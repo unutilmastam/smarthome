@@ -48,6 +48,34 @@ export interface Home {
 }
 
 export interface EnergyDevice { device_id: string; key: string; name: string; kwh: number; cost: number | null; currency: string | null; days_with_data: number }
+/** Automation rule (packages/contracts/schemas/automation.schema.json, ADR 0013). */
+export type Trigger =
+  | { type: "state"; device: string; capability: string; attribute: string; to: unknown; for_s?: number }
+  | { type: "time"; at: string; days?: string[] }
+  | { type: "sun"; event: "sunrise" | "sunset"; offset_min?: number; days?: string[] };
+export type Condition =
+  | { type: "state"; device: string; capability: string; attribute: string; is: unknown }
+  | { type: "time"; after: string; before: string; days?: string[] }
+  | { type: "sun"; is: "day" | "night"; offset_min?: number }
+  | { type: "security_mode"; is: string[] };
+export type AutoAction =
+  | { type: "command"; device: string; capability: string; action: string; params?: Record<string, unknown>; auto_off_after_s?: number }
+  | { type: "delay"; seconds: number }
+  | { type: "notify"; text: string; severity?: "info" | "warning" | "critical" };
+export interface AutomationDef {
+  triggers: Trigger[]; conditions?: Condition[]; actions: AutoAction[];
+  cooldown_s?: number; max_runs_per_hour?: number; manual_override_s?: number;
+}
+export interface AutomationRun {
+  id: string; automation_id: string; version: number; ts: string; trigger: string;
+  result: "ok" | "partial" | "failed" | "skipped"; reason: string | null;
+  actions: { type: string; device?: string; action?: string; outcome: string; text?: string; severity?: string }[];
+}
+export interface Automation {
+  id: string; home_id: string; name: string; enabled: boolean; definition: AutomationDef;
+  version: number; created_at: string; updated_at: string; last_run: AutomationRun | null;
+}
+
 /** Event from a device or the hub (ADR 0012). */
 export interface HomeEvent {
   id: string; ts: string; type: string; severity: "info" | "warning" | "critical";

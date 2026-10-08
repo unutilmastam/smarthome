@@ -14,6 +14,7 @@ from typing import Dict, Optional, Set
 import aiomqtt
 
 from gateway.alarm import AlarmEngine
+from gateway.automations import AutomationEngine
 from gateway.backend import BackendClient, BackendError
 from gateway.config import GatewaySettings
 from gateway.contracts import Contracts
@@ -52,6 +53,16 @@ class Gateway:
         self.alarms: Dict[str, AlarmEngine] = {}
         self.gate_watch = GateWatcher(self.emit_event)
         self.climate_watch = ClimateWatcher(self.emit_event)
+        # When a PERSON last commanded each device (manual override, ADR 0013).
+        self.manual_at: Dict[str, object] = {}
+        self._local_cids: Set[str] = set()
+        self.automations = AutomationEngine(
+            known=lambda k, c, a: self._known(k, c, a),
+            execute=self.execute_local,
+            record=lambda run: self.store.enqueue("automation_run", run),
+            security_states=lambda: [e.state for e in self.alarms.values()],
+            is_offline=lambda k: self.store.availability().get(k) == "offline",
+            last_manual=lambda k: self.manual_at.get(k))
         cached = self.store.get_kv("config")
         self.mqtt: Optional[aiomqtt.Client] = None
         self.mqtt_connected = asyncio.Event()
@@ -96,6 +107,7 @@ class Gateway:
         self.devices = {d["key"]: d for d in cfg.get("devices", [])}
         self.home_id = (cfg.get("home") or {}).get("id")
         self._sync_virtual_devices()
+        self.automations.load(cfg.get("automations") or [], cfg.get("home"))
 
     # ---- virtual devices on the hub (ADR 0012) --------------------------------------
     def _sync_virtual_devices(self) -> None:
@@ -179,6 +191,7 @@ class Gateway:
 
     def watch_tick(self, now=None) -> None:
         now = now or utcnow()
+        self.automations.tick(now)
         for eng in list(self.alarms.values()):
             eng.tick(now)
         self.gate_watch.check(now, lambda k: self._cap_cfg(k, "cover").get(
@@ -257,6 +270,8 @@ class Gateway:
     # ---- execution -------------------------------------------------------------------------
     def _ack(self, command_id: str, status: str, reason: Optional[str] = None,
              detail: Optional[str] = None) -> None:
+        if command_id in self._local_cids:
+            return  # hub-local command (automation): the cloud never knew it
         a = {"schema": 1, "command_id": command_id, "status": status, "ts": iso(utcnow())}
         if reason:
             a["reason"] = reason
@@ -287,6 +302,7 @@ class Gateway:
 
         p = verdict.payload
         cid, key, cap = p["command_id"], p["device_key"], p["capability"]
+        self.manual_at[key] = utcnow()   # a person acts: automations leave this device alone
         prev = {a: (self.store.get_state(key, cap, a) or {}).get("value")
                 for a in self.contracts.capabilities[cap]["attributes"]}
         unsupported = frozenset(self.devices.get(key, {}).get("unsupported") or [])
@@ -297,6 +313,30 @@ class Gateway:
             return await self._run(cid, p, pend)
         finally:
             self.pending.pop(cid, None)
+
+    async def execute_local(self, key: str, cap: str, action: str, params: dict) -> str:
+        """Hub-originated command (automation, ADR 0013): same ack/confirmation path as a
+        cloud command, without a cloud signature and without reporting acks to the cloud."""
+        device = self.devices.get(key)
+        if device is None or cap not in device.get("capabilities", {}):
+            return "failed:unknown_device"
+        if not device.get("enabled", True):
+            return "skipped:disabled"
+        cid = str(uuid.uuid4())
+        p = {"command_id": cid, "device_key": key, "capability": cap, "action": action,
+             "params": params}
+        prev = {a: (self.store.get_state(key, cap, a) or {}).get("value")
+                for a in self.contracts.capabilities[cap]["attributes"]}
+        unsupported = frozenset(device.get("unsupported") or [])
+        pend = Pending(key, cap, asyncio.get_running_loop().create_future(),
+                       expectation(cap, action, params, prev, unsupported))
+        self.pending[cid] = pend
+        self._local_cids.add(cid)
+        try:
+            return await self._run(cid, p, pend)
+        finally:
+            self.pending.pop(cid, None)
+            self._local_cids.discard(cid)
 
     async def _run(self, cid: str, p: dict, pend: Pending) -> str:
         cmd = {"schema": 1, "command_id": cid, "capability": p["capability"],
@@ -486,7 +526,10 @@ class Gateway:
             if (self.store.get_state(key, "climate", "current_temp") or {}).get("source") != "reported":
                 current["current_temp"] = None
             self.climate_watch.update(key, accepted["climate"], current, now)
-        if source != "reported" or key in self.alarms:
+        if source != "reported":
+            return
+        self.automations.on_state(key, accepted, now)
+        if key in self.alarms:
             return
         if "cover" in accepted and "state" in accepted["cover"]:
             self.gate_watch.update(key, accepted["cover"]["state"], now)
@@ -543,9 +586,9 @@ class Gateway:
     async def _flush(self) -> bool:
         self.queue_dirty()
         self.queue_telemetry()
-        for kind in ("ack", "report", "event", "telemetry"):
+        for kind in ("ack", "report", "event", "automation_run", "telemetry"):
             while True:
-                items = self.store.peek(kind, 100 if kind in ("ack", "event") else 1)
+                items = self.store.peek(kind, 100 if kind in ("ack", "event", "automation_run") else 1)
                 if not items:
                     break
                 try:
@@ -555,6 +598,8 @@ class Gateway:
                         await self.backend.report(items[0][1])
                     elif kind == "event":
                         await self.backend.events([p for _, p in items])
+                    elif kind == "automation_run":
+                        await self.backend.automation_runs([p for _, p in items])
                     else:
                         await self.backend.telemetry(items[0][1])
                 except BackendError as exc:

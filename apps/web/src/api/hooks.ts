@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Command, Device, EnergySummary, Home, HomeEvent, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
+import type { Automation, AutomationRun, Command, Device, EnergySummary, Home, HomeEvent, Hub, Member, Room, SessionInfo, TelemetryPoint } from "./types";
 
 /** Device state refresh when realtime is not available (ARCHITECTURE 2.A: 3 s). */
 export const POLL_MS = 3000;
@@ -63,3 +63,11 @@ export const useEvents = (home?: string, filter: { severity?: string; capability
   return useQuery({ queryKey: ["events", home ?? "", qs.toString()], enabled: !!home, refetchInterval: 10_000,
     queryFn: () => api.get<HomeEvent[]>(`/homes/${home}/events?${qs}`) });
 };
+
+export const useAutomations = (home?: string) =>
+  useQuery({ queryKey: ["automations", home ?? ""], enabled: !!home, refetchInterval: 15_000,
+    queryFn: () => api.get<Automation[]>(`/homes/${home}/automations`) });
+
+export const useAutomationRuns = (id?: string) =>
+  useQuery({ queryKey: ["automation-runs", id ?? ""], enabled: !!id, refetchInterval: 10_000,
+    queryFn: () => api.get<AutomationRun[]>(`/automations/${id}/runs?limit=50`) });

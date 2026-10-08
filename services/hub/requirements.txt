@@ -5,3 +5,5 @@ httpx==0.28.1
 pydantic==2.13.5
 pydantic-settings==2.15.0
 jsonschema==4.26.0
+# Time zones for automations (python:*-slim has no system tz database).
+tzdata==2026.5

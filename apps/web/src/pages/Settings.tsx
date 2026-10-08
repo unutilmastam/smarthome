@@ -7,6 +7,8 @@ import { useSession } from "../auth/session";
 import { errorText } from "../components/CommandStatus";
 import { LANGUAGES, setLanguage, type Lang } from "../i18n";
 import { usePrefs } from "../lib/prefs";
+import { can } from "../lib/contracts";
+import { useCurrentHome } from "../lib/home";
 
 function useAction() {
   const { t } = useTranslation();
@@ -54,6 +56,7 @@ export function Settings() {
           </select>
         </label>
       </section>
+      <HomeLocation />
 
       <form className="card" onSubmit={async (e) => {
         e.preventDefault();
@@ -96,5 +99,41 @@ export function Settings() {
         </div>
       </section>
     </div>
+  );
+}
+
+/** Home coordinates: only used on the hub to compute sunrise/sunset (ADR 0013, H-14). */
+function HomeLocation() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { home } = useCurrentHome();
+  const act = useAction();
+  const [lat, setLat] = useState<string>(home?.latitude?.toString() ?? "");
+  const [lon, setLon] = useState<string>(home?.longitude?.toString() ?? "");
+  if (!home || !can(home.my_role, "configure")) return null;
+  const fromDevice = () => navigator.geolocation?.getCurrentPosition(
+    (p) => { setLat(p.coords.latitude.toFixed(4)); setLon(p.coords.longitude.toFixed(4)); },
+    () => undefined, { enableHighAccuracy: false, timeout: 10000 });
+  return (
+    <form className="card" onSubmit={async (e) => {
+      e.preventDefault();
+      const body = lat === "" && lon === "" ? { latitude: null, longitude: null }
+        : { latitude: Number(lat), longitude: Number(lon) };
+      if (await act.run(() => api.patch(`/homes/${home.id}`, body), t("settings.locationSaved"))) {
+        void qc.invalidateQueries({ queryKey: qk.homes });
+      }
+    }}>
+      <h3>{t("settings.location")}</h3>
+      <p className="muted" style={{ margin: 0 }}>{t("settings.locationHint")}</p>
+      <div className="grid">
+        <label>{t("settings.latitude")}<input type="number" step="0.0001" min={-90} max={90} value={lat} onChange={(e) => setLat(e.target.value)} /></label>
+        <label>{t("settings.longitude")}<input type="number" step="0.0001" min={-180} max={180} value={lon} onChange={(e) => setLon(e.target.value)} /></label>
+      </div>
+      {act.view}
+      <div className="row">
+        {"geolocation" in navigator && <button type="button" onClick={fromDevice}>{t("settings.useMyLocation")}</button>}
+        <button className="primary" type="submit" disabled={(lat === "") !== (lon === "")}>{t("app.save")}</button>
+      </div>
+    </form>
   );
 }

@@ -17,6 +17,7 @@ Belgilar: `[SIM]` — simulyatsiyada, `[REAL]` — haqiqiy apparatda sinalgan.
 | 9 | Elektr monitoring | qisman: `[SIM]` tugadi; haqiqiy hisoblagich bilan solishtirilmagan (`[REAL]` yo'q) |
 | 10 | Kameralar (lokal) | qisman: bulut tomoni va Hub monitoringi `[SIM]`; Frigate va kameralar apparatda sinalmagan |
 | 11 | Darvoza, konditsioner, xavfsizlik, sug'orish | qisman: shartnoma, Hub, proshivka, UI va nosozlik testlari `[SIM]` tugadi; **apparatda sinalmagan** (`[REAL]` jadvallar bo'sh, inventar H-05/H-06/H-11/H-13 ochiq) |
+| 12 | Avtomatika (Hub'da) | tugadi `[SIM]`: format, validatsiya, Hub dvigateli, vizual muharrir; haqiqiy uyda sinalmagan |
 
 ---
 
@@ -798,3 +799,65 @@ Tasdiqlanmagan taxminlar:
 - Klapan 24 V AC, oqim datchigi YF-S201 (H-11).
 
 Keyingi faza: 12 — Avtomatika (Hub'da).
+
+---
+
+## Faza 12 — Avtomatika (Hub'da) — 2026-10-08
+Holat: tugadi `[SIM]`. Haqiqiy uyda va qurilmalarda sinalmagan.
+
+Qilingan ishlar:
+- **ADR 0013 va shartnoma:**
+  - `automation.schema.json`:
+    - triggerlar: qurilma holati (`for_s` bilan), vaqt va kunlar, quyosh chiqishi/botishi ± daqiqa;
+    - shartlar: holat, vaqt oralig'i, kun yoki tun, signalizatsiya rejimi;
+    - harakatlar: buyruq (`auto_off_after_s` bilan), kutish, xabar;
+    - sozlamalar: `cooldown_s`, `max_runs_per_hour`, `manual_override_s`.
+  - `hub-automation-runs.schema.json` — bajarilish tarixi formati.
+  - ARCHITECTURE 11-bo'lim yakuniy formatga moslashtirildi.
+- **Backend:**
+  - Jadvallar: `automations` (versiya bilan) va `automation_runs` (90 kun saqlanadi). Migratsiya 0007, expand-only.
+  - API: CRUD, `:validate`, run tarixi. Hub qoidalarni `GET /hub/config` orqali oladi.
+  - `POST /hub/automation-runs` — id bo'yicha idempotent.
+  - Validatsiya qoidalari:
+    - qurilma, capability, atribut va qiymat shartnoma sxemasi bo'yicha tekshiriladi;
+    - harakat parametrlari tekshiriladi; klapan `duration_s` uchun `max_runtime_s` dan oshib bo'lmaydi;
+    - **`risk: high` harakatlar taqiqlangan**: darvoza, qulf, kontaktor, signalizatsiya;
+    - **sikllar rad etiladi** (A → B → A va o'ziga ham). O'chirilgan qoidani qayta yoqishda ham tekshiriladi;
+    - `sun` uchun uy koordinatalari majburiy.
+- **Hub dvigateli** (`gateway/automations.py`, `gateway/sun.py`):
+  - Trigger faqat qurilmadan kelgan (`reported`) qiymat **o'zgarganda** ishlaydi.
+  - Qiymat noma'lum yoki qurilma oflayn bo'lsa, shart bajarilmagan hisoblanadi.
+  - Quyosh vaqti NOAA formulasi bilan internetsiz hisoblanadi; London jadvali bilan ±1 daqiqa farq. Hub o'chiq turgan paytdagi eski quyosh botishi qayta bajarilmaydi.
+  - `cooldown`, `max_runs_per_hour` ishlaydi (limit bir marta yoziladi). Qoida tahrirlanganda tarix va limit saqlanadi.
+  - **Qo'lda boshqaruv ustun:** odam ilovadan buyruq bersa, avtomatika shu qurilmaga `manual_override_s` davomida tegmaydi. `auto_off` ham, agar odam qurilmani olib qo'ygan bo'lsa, o'chirmaydi.
+  - Buyruqlar lokal yuboriladi va bulut buyrug'i kabi ack hamda tasdiq kutadi. Bulutga ack yuborilmaydi, bulutdagi buyruqlar tarixida ko'rinmaydi.
+  - Har bir ishga tushish outbox orqali yuboriladi: internet yo'q paytda kutadi, keyin yetkaziladi.
+- **PWA:**
+  - "Avtomatika" sahifasi: qoidalar ro'yxati, qoidani so'z bilan tushuntirish, yoqish/o'chirish kaliti, oxirgi natija, tarix.
+  - **Vizual muharrir:** "Qachon? / Agar / Nima qilsin?". Qiymatlar shartnoma sxemasidan tanlanadi (erkin matn emas). Yuqori xavfli qurilmalar harakatlar ro'yxatida umuman ko'rinmaydi. Backend xatolari to'liq ko'rsatiladi.
+  - Sozlamalar → "Uy joylashuvi": koordinatalar, "Hozirgi joylashuvdan olish" tugmasi.
+- Hub `requirements.txt` ga `tzdata` qo'shildi: Docker slim image'da vaqt zonalari bazasi yo'q.
+
+Topilgan va tuzatilgan xato: `auto_off` odam qurilmani qo'lga olgandan keyin ham o'chirib qo'yardi. Unit test buni topdi.
+
+CI (oldingi commit 040b030): web E2E, proshivka kompilyatsiyasi (sug'orish, sirena va datchik ham), backend, migratsiyalar va hub 3.10 — hammasi yashil. `hub 3.12` job'i GitHub runner'ida "Install mosquitto" qadamida qotib qoldi. Bu kod xatosi emas; keyingi push'da qayta ishlaydi.
+
+Testlar:
+- Contracts: 70 passed.
+- Backend: 179 passed. Avtomatika testlari 15 ta: validatsiya, high-risk taqiqi, sikllar, versiya, ruxsatlar, idempotent tarix.
+- Hub: 83 passed `[SIM]`. Shundan 13 tasi dvigatel unit testlari, 3 tasi to'liq zanjir (haqiqiy Mosquitto):
+  - harakat → chiroq **internetsiz** yoqiladi, tarix keyin yetadi;
+  - odam buyrug'i avtomatikadan ustun;
+  - o'chirilgan qoida Hub'da to'xtaydi.
+- Web: vitest 46 passed. Playwright 12 passed: telefon va iPad'da qoidani muharrirda yaratish, yoqish/o'chirish va o'chirib tashlash.
+- PostgreSQL migratsiya testi bu safar lokal ishga tushirilmadi (konteyner qayta yongandan keyin PostgreSQL ishlamayapti); CI'dagi `migrations` job'i uni tekshiradi.
+
+Hal qilinmagan xavflar:
+- `notify` hozircha faqat tarixga yoziladi. Telegram/Push — Faza 13; ungacha avtomatika xabari **telefonga kelmaydi**.
+- Ishlash vaqtidagi sikl himoyasi faqat `max_runs_per_hour` ga tayanadi (asosiy himoya — saqlashdagi tekshiruv).
+- Bitta qurilmada bir nechta capability bo'lsa, harakat va trigger capability darajasida solishtiriladi (masalan, dimmer ↔ switch alohida hisoblanadi).
+
+Tasdiqlanmagan taxminlar:
+- Uy koordinatalari kiritilmagan (H-14). Ularsiz quyosh qoidalari saqlanmaydi.
+
+Keyingi faza: 13 — Bildirishnomalar.

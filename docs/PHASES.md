@@ -226,7 +226,7 @@ Har bir tur uchun alohida qadam: contracts → ESPHome/PlatformIO proshivka → 
 
 ## Faza 12 — Avtomatika (Hub'da)
 
-- [ ] Qoida formati ARCHITECTURE 11-bo'lim; JSON Schema `packages/contracts/schemas/automation.schema.json`.
+- [x] Qoida formati ARCHITECTURE 11-bo'lim; JSON Schema `packages/contracts/schemas/automation.schema.json`.
 - [ ] Backend: saqlash, validatsiya (mavjud qurilma/capability, sikl aniqlash), versiya; Hub `GET /hub/config` orqali oladi.
 - [ ] Hub dvigateli: trigger/shart/harakat, quyosh vaqti (uy koordinatalari), cooldown, `max_runs_per_hour`, manual override, bajarilish tarixi.
 - [ ] UI: vizual muharrir.

@@ -256,8 +256,8 @@ command_results (command_id, status, detail, ts)
 telemetry_1m   (device_id, metric, ts, avg, min, max)   -- 30 kun
 telemetry_1h   (device_id, metric, ts, avg, min, max)   -- 2 yil
 energy_daily   (device_id, date, kwh, cost)              -- doimiy
-automations (json definition, version, enabled)
-automation_runs (automation_id, trigger, result, error, ts)
+automations (home_id, name, definition json, version, enabled)        -- ADR 0013
+automation_runs (automation_id, version, trigger, result, reason, actions, ts)
 schedules
 notifications (severity, source, title, body, acked_by, acked_at)
 push_subscriptions, telegram_links
@@ -279,7 +279,7 @@ users/roles:   GET/POST/PATCH /users, /homes/{id}/members
 homes/rooms:   /homes, /homes/{id}/floors, /rooms
 devices:       /devices (filter: room, type, status), /devices/{id}, /devices/{id}/history
 commands:      POST /commands, GET /commands/{id}, POST /groups/{id}/commands
-automations:   /automations, /automations/{id}/runs, POST /automations/validate
+automations:   /homes/{id}/automations, /automations/{id}, /automations/{id}/runs, POST /homes/{id}/automations:validate
 energy:        /energy/summary?period=, /energy/circuits/{id}
 events:        GET /homes/{id}/events (severity, capability, device_id, before) — ADR 0012
 notifications: /notifications, POST /notifications/{id}/ack, /push/subscribe
@@ -343,34 +343,25 @@ Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live
 
 ## 11. Avtomatika (Hub'da bajariladi)
 
-```yaml
-id: garden_night_motion
-enabled: true
-trigger:
-  - type: state
-    device: garden_radar
-    capability: motion
-    to: detected
-conditions:
-  - type: sun
-    after: sunset
-  - type: security_mode
-    is: armed
-actions:
-  - type: command
-    device: garden_lights
-    action: turn_on
-    auto_off_after: 300        # soniya
-  - type: notify
-    severity: warning
-    text: "Bog'da harakat aniqlandi"
-cooldown: 120
-max_runs_per_hour: 20
+Format: `packages/contracts/schemas/automation.schema.json` (ADR 0013). Misol (UI vizual muharriri shu JSON'ni yaratadi):
+```json
+{
+  "triggers": [{ "type": "state", "device": "garden_radar", "capability": "motion",
+                 "attribute": "detected", "to": true }],
+  "conditions": [{ "type": "sun", "is": "night" },
+                 { "type": "security_mode", "is": ["armed_away", "armed_home"] }],
+  "actions": [{ "type": "command", "device": "garden_lights", "capability": "switch",
+                "action": "turn_on", "auto_off_after_s": 300 },
+              { "type": "notify", "severity": "warning", "text": "Bog'da harakat aniqlandi" }],
+  "cooldown_s": 120,
+  "max_runs_per_hour": 20
+}
 ```
-- Validatsiya: mavjud qurilma va capability, sikl (A → B → A) aniqlanadi va rad etiladi.
-- Har bir ishga tushish `automation_runs` ga yoziladi.
-- Qo'lda boshqaruv (manual override) avtomatikani belgilangan vaqtga to'xtatadi.
-- Vizual muharrir UI'da shu YAML/JSON'ni yaratadi.
+- Validatsiya (backend): mavjud qurilma, capability, atribut va qiymat (shartnoma sxemasi bo'yicha); harakat parametrlari; **`risk: high` harakatlar taqiqlangan**; sikl (A → B → A, o'ziga ham) rad etiladi; `sun` uchun uy koordinatalari majburiy.
+- Trigger va shartlar faqat qurilmadan kelgan (`reported`) qiymatlarga qaraydi. Qiymat noma'lum yoki qurilma oflayn bo'lsa, shart bajarilmagan hisoblanadi.
+- Har bir ishga tushish `automation_runs` ga yoziladi (Hub outbox → `POST /hub/automation-runs`).
+- Qo'lda boshqaruv (manual override) shu qurilmaga avtomatika ta'sirini `manual_override_s` (standart 30 daq) ga to'xtatadi.
+- `cooldown_s` (standart 60) va `max_runs_per_hour` (standart 20) Hub'da majburiy.
 
 ---
 

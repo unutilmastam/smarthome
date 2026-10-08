@@ -34,6 +34,7 @@ export function Layout() {
     { to: "/energy", icon: "energy", label: t("nav.energy") },
     { to: "/cameras", icon: "camera", label: t("nav.cameras") },
     { to: "/security", icon: "shield", label: t("nav.security") },
+    { to: "/automations", icon: "play", label: t("nav.automations") },
     { to: "/events", icon: "bell", label: t("nav.events") },
     { to: "/hub", icon: "hub", label: t("nav.hub") },
     { to: "/settings", icon: "settings", label: t("nav.settings") },

@@ -58,6 +58,9 @@ class BackendClient:
     async def events(self, events: List[dict]) -> dict:
         return (await self._call("POST", "/events", json={"schema": 1, "events": events}))["data"]
 
+    async def automation_runs(self, runs: List[dict]) -> dict:
+        return (await self._call("POST", "/automation-runs", json={"schema": 1, "runs": runs}))["data"]
+
     async def telemetry(self, batch: dict) -> dict:
         return (await self._call("POST", "/telemetry:batch", json=batch))["data"]
 

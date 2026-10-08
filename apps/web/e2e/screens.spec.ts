@@ -28,4 +28,15 @@ test("screenshots", async ({ page }, info) => {
   await page.screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-add-type.png` });
   await page.getByRole("button", { name: "Chiroq", exact: true }).click();
   await page.screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-add-details.png` });
+  await page.keyboard.press("Escape");
+  await page.goto("/automations");
+  await page.getByRole("button", { name: "Yangi avtomatika" }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByLabel("Nomi").fill("Kechqurun eshik ochilsa");
+  await dlg.getByRole("button", { name: /Qurilma holati/ }).first().click();
+  await dlg.getByRole("combobox", { name: "Qurilma", exact: true }).first().selectOption({ label: "Kirish eshigi" });
+  await dlg.getByRole("button", { name: /Kun \/ tun/ }).click();
+  await dlg.getByRole("button", { name: /Buyruq/ }).click();
+  await dlg.getByRole("combobox", { name: "Qurilma", exact: true }).last().selectOption({ label: "Bog' chiroqlari" });
+  await page.screenshot({ path: `${process.env.SCREENSHOTS_DIR}/${info.project.name}-automation-editor.png` });
 });

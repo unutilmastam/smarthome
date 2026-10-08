@@ -1,4 +1,5 @@
 from app.models.audit import AuditLog
+from app.models.automation import Automation, AutomationRun
 from app.models.auth import AuthSession, RateLimitHit
 from app.models.command import Command, CommandEvent
 from app.models.event import Event
@@ -10,6 +11,8 @@ from app.models.user import User
 
 __all__ = [
     "AuditLog",
+    "Automation",
+    "AutomationRun",
     "AuthSession",
     "RateLimitHit",
     "Command",

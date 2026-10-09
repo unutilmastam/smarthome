@@ -6,7 +6,9 @@ import { useDevice, useDeviceCommands, useEvents, useRooms } from "../api/hooks"
 import { EventList } from "../components/EventFeed";
 import { useCanConfigure } from "../components/AddFlow";
 import { EditDeviceSheet } from "../components/AddForms";
-import { AvailabilityBadge, DeviceIcon, deviceClasses } from "../components/DeviceCard";
+import { AvailabilityBadge } from "../components/DeviceCard";
+import { usePrefs } from "../lib/prefs";
+import { deviceVisual } from "../lib/visual";
 import { Icon } from "../components/Icon";
 import { DeviceControls } from "../components/DeviceControls";
 import { useLive } from "../components/Layout";
@@ -26,29 +28,41 @@ export function DeviceDetail() {
   const canEdit = useCanConfigure();
   const [editing, setEditing] = useState(false);
   const created = (useLocation().state as { created?: boolean } | null)?.created;
+  const { pinned, togglePin } = usePrefs();
   if (device.isLoading) return <p>{t("app.loading")}</p>;
   if (!device.data) return <p className="error">{t("errors.generic")}</p>;
   const d = device.data;
+  const vis = deviceVisual(d);
+  const isPinned = (pinned[d.home_id] ?? []).includes(d.id);
   const fmt = (s: string) => new Date(s).toLocaleString(i18n.language, { timeZone: home?.timezone ?? "Asia/Tashkent" });
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div className={`${deviceClasses(d)} detail-head`}>
-        <div className="dev-head">
-          <DeviceIcon device={d} size={30} />
+      <section className={`hero tone-${vis.tone} ${vis.active ? "on" : ""} ${vis.offline ? "offline" : ""}`}>
+        <div className="hero-top">
           <div className="meta">
-            <h2 style={{ margin: 0 }}>{d.name}</h2>
+            <h2>{d.name}</h2>
             <div className="row">
               <AvailabilityBadge device={d} />
-              {d.room_id && <span className="muted">{rooms.data?.find((r) => r.id === d.room_id)?.name}</span>}
+              {d.room_id && <span className="hero-room">{rooms.data?.find((r) => r.id === d.room_id)?.name}</span>}
             </div>
           </div>
+          <button className="hero-btn" aria-pressed={isPinned} aria-label={isPinned ? t("dashboard.unpin") : t("dashboard.pin")}
+            onClick={() => togglePin(d.home_id, d.id)}>
+            <Icon name="star" size={20} fill={isPinned ? "currentColor" : "none"} />
+          </button>
           {canEdit && (
-            <button type="button" className="icon-btn" aria-label={t("devices.edit")} onClick={() => setEditing(true)}>
+            <button type="button" className="hero-btn" aria-label={t("devices.edit")} onClick={() => setEditing(true)}>
               <Icon name="edit" size={20} />
             </button>
           )}
         </div>
-        {created && <p className="note" role="status"><Icon name="check" size={18} /> {t("devices.created")} {t("devices.afterAdd")}</p>}
+        <div className={`hero-visual ${vis.anim ? `anim-${vis.anim}` : ""}`} aria-hidden="true">
+          <span className="hero-glow" />
+          <span className="hero-ico"><Icon name={vis.icon} size={56} /></span>
+        </div>
+      </section>
+      {created && <p className="note" role="status"><Icon name="check" size={18} /> {t("devices.created")} {t("devices.afterAdd")}</p>}
+      <div className="card panel">
         <DeviceControls device={d} role={home?.my_role} />
       </div>
       {canEdit && <EditDeviceSheet open={editing} onClose={() => setEditing(false)} device={d} rooms={rooms.data ?? []} />}

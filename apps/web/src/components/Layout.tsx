@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useHubs, useNotifications } from "../api/hooks";
 import { can } from "../lib/contracts";
@@ -43,7 +43,14 @@ export function Layout() {
     { to: "/settings", icon: "settings", label: t("nav.settings") },
     ...(owner ? [{ to: "/members", icon: "members", label: t("nav.members") }] : []),
   ];
-  const tabs = [all[0], all[1], all[2], all[3], { to: "/more", icon: "more", label: t("nav.more") }];
+  // Phone tab bar, like the phone home apps: home, smart (automations), electricity, me.
+  const tabs = [
+    { to: "/", icon: "home", label: t("nav.home"), end: true },
+    { to: "/automations", icon: "play", label: t("nav.smart") },
+    { to: "/energy", icon: "energy", label: t("nav.energy") },
+    { to: "/more", icon: "members", label: t("nav.me") },
+  ];
+  const { pathname } = useLocation();
 
   return (
     <RealtimeContext.Provider value={mode}>
@@ -58,32 +65,35 @@ export function Layout() {
           <header className="topbar">
             <div className="titles">
               <div className="greet">{t(`greeting.${greetingKey()}`)}</div>
-              <h1>{home?.name ?? t("app.title")}</h1>
+              <div className="home-switch">
+                <h1>{home?.name ?? t("app.title")}</h1>
+                {homes.length > 1 && (
+                  <select aria-label={t("settings.home")} value={home?.id} onChange={(e) => setHome(e.target.value)}>
+                    {homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                )}
+                <span className={`live-dot ${mode === "realtime" ? "on" : ""}`} role="img"
+                  aria-label={t(mode === "realtime" ? "banner.realtime" : "banner.polling")}
+                  title={t(mode === "realtime" ? "banner.realtime" : "banner.polling")} />
+              </div>
             </div>
-            {homes.length > 1 && (
-              <select aria-label={t("settings.home")} value={home?.id} onChange={(e) => setHome(e.target.value)} style={{ width: "auto" }}>
-                {homes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-              </select>
-            )}
             <Link to="/notifications" className={`bell ${critical ? "alerting" : ""}`} data-testid="bell"
               aria-label={unacked ? t("notify.bellOpen", { count: unacked }) : t("notify.title")}>
               <Icon name="bell" size={20} />{unacked > 0 && <span className="badge">{unacked > 99 ? "99+" : unacked}</span>}
             </Link>
             <AddButton compact />
-            <span className={`live ${mode === "realtime" ? "on" : ""}`} title={t(mode === "realtime" ? "banner.realtime" : "banner.polling")}>
-              <i />{mode === "realtime" ? "live" : "3s"}
-            </span>
           </header>
           {isLocalHub() && <div className="banner info" role="status"><Icon name="wifi" />{t("banner.local")}</div>}
           {hubs.isSuccess && active.length === 0 && <div className="banner warn" role="alert"><Icon name="hub" />{t("banner.noHub")}</div>}
           {hubs.isSuccess && active.length > 0 && !hubOnline &&
             <div className="banner warn" role="alert" data-testid="hub-offline"><Icon name="offline" />{t("banner.hubOffline")}</div>}
-          <main><Outlet /></main>
+          {/* key: every page enters with a short animation, like the phone apps */}
+          <main key={pathname} className="page-enter"><Outlet /></main>
         </div>
         <AddFlowHost />
         <nav className="tabbar" aria-label="tabs">
           {tabs.map((n) => (
-            <NavLink key={n.to} to={n.to} end={"end" in n ? n.end : undefined}><Icon name={n.icon} size={22} />{n.label}</NavLink>
+            <NavLink key={n.to} to={n.to} end={"end" in n ? n.end : undefined}><span className="tab-ico"><Icon name={n.icon} size={24} /></span>{n.label}</NavLink>
           ))}
         </nav>
       </div>

@@ -9,7 +9,6 @@ import { Icon } from "../components/Icon";
 import { IrrigationStop } from "../components/IrrigationStop";
 import { Link } from "react-router-dom";
 import { useLive } from "../components/Layout";
-import { roomIcon } from "../lib/catalog";
 import { useCurrentHome } from "../lib/home";
 import { usePrefs } from "../lib/prefs";
 
@@ -18,12 +17,13 @@ const good = (d: Device, cap: string, attr: string) => {
   return v && v.quality === "good" ? v.value : undefined;
 };
 
-/** A summary pill at the top of the home screen (like the status row of phone home apps). */
-function Stat({ icon, tone, label, value, testid }: { icon: string; tone: string; label: string; value: string; testid: string }) {
+/** One number in the home summary card. */
+function Stat({ icon, label, value, testid }: { icon: string; label: string; value: string; testid: string }) {
   return (
-    <div className={`stat-pill ${tone}`} data-testid={testid}>
-      <span className="sp-ico"><Icon name={icon} size={18} /></span>
-      <span className="sp-text"><strong>{value}</strong><span>{label}</span></span>
+    <div className="sum-stat" data-testid={testid}>
+      <Icon name={icon} size={16} />
+      <strong>{value}</strong>
+      <span>{label}</span>
     </div>
   );
 }
@@ -47,7 +47,12 @@ export function Dashboard() {
     const watts = list.map((d) => good(d, "power_meter", "power")).filter((w): w is number => typeof w === "number");
     const attention = list.filter((d) => d.availability.status === "offline" ||
       good(d, "leak", "wet") === true || good(d, "breaker", "tripped") === true).length;
+    // Indoor climate from a real sensor only (there is no weather service: nothing invented).
+    const env = list.find((d) => typeof good(d, "environment", "temperature") === "number");
     return {
+      temp: env ? Number(good(env, "environment", "temperature")) : null,
+      humidity: env ? good(env, "environment", "humidity") as number | undefined : undefined,
+      tempFrom: env?.name,
       // Never invent: unknown light states are not counted as "off".
       lights: known.length ? `${on}/${lights.length}` : "—",
       power: watts.length ? `${Math.round(watts.reduce((a, b) => a + b, 0))} W` : "—",
@@ -56,7 +61,7 @@ export function Dashboard() {
   }, [list]);
   const hubOnline = (hubs.data ?? []).some((h) => h.status === "active" && h.online);
 
-  if (devices.isLoading) return <p>{t("app.loading")}</p>;
+  if (devices.isLoading) return <Skeleton />;
   if (list.length === 0) return <FirstRun />;
   // Breakers live in the panel (Elektr): on the home page only a summary, unless pinned (ADR 0015).
   const base = pinned.length ? list.filter((d) => pinned.includes(d.id)) : list.filter((d) => !d.capabilities.breaker);
@@ -66,28 +71,45 @@ export function Dashboard() {
       <IrrigationStop devices={list} />
       <AlarmBanner devices={list} />
       <PanelBanner devices={list} />
-      <div className="stats">
-        <Stat testid="stat-lights" icon="bulb" tone="tone-light" label={t("dashboard.lightsOn")} value={stats.lights} />
-        <Stat testid="stat-power" icon="energy" tone="tone-power" label={t("dashboard.powerNow")} value={stats.power} />
-        <Stat testid="stat-hub" icon="hub" tone={hubOnline ? "tone-gate" : "tone-alert"} label={t("dashboard.hubLabel")}
-          value={hubs.isSuccess ? t(hubOnline ? "hub.online" : "hub.offline") : "—"} />
-        <Stat testid="stat-attention" icon={stats.attention ? "alert" : "shield"} tone={stats.attention ? "tone-alert" : "tone-sensor"}
-          label={stats.attention ? t("dashboard.attention") : t("dashboard.allGood")} value={String(stats.attention)} />
-      </div>
-      {(rooms.data?.length ?? 0) > 0 && (
-        <div className="chips" role="group" aria-label={t("dashboard.rooms")}>
-          <button aria-pressed={room === null} onClick={() => setRoom(null)}><Icon name="home" size={16} /> {t("app.all")}</button>
-          {rooms.data!.map((r) => (
-            <button key={r.id} aria-pressed={room === r.id} onClick={() => setRoom(r.id)}><Icon name={roomIcon(r)} size={16} /> {r.name}</button>
-          ))}
+      <section className="sum-card" aria-label={t("dashboard.summary")}>
+        <div className="sum-main">
+          {stats.temp !== null ? (
+            <>
+              <span className="sum-big">{Math.round(stats.temp)}°</span>
+              <span className="sum-sub">
+                <strong>{t("dashboard.indoor")}</strong>
+                <span>{stats.tempFrom}{typeof stats.humidity === "number" ? ` · ${Math.round(stats.humidity)}%` : ""}</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="sum-icon"><Icon name={hubOnline ? "home" : "offline"} size={30} /></span>
+              <span className="sum-sub">
+                <strong>{stats.attention ? t("dashboard.attentionN", { count: stats.attention }) : t("dashboard.allGood")}</strong>
+                <span>{t("dashboard.devicesCount", { count: list.length })}</span>
+              </span>
+            </>
+          )}
         </div>
-      )}
-      <div className="section-title">
-        <h2>{pinned.length ? t("dashboard.pinned") : t("dashboard.title")}</h2>
-        <span className="muted">{shown.length}</span>
-      </div>
-      {!pinned.length && <p className="muted hint">{t("dashboard.pinHint")}</p>}
+        <div className="stats">
+          <Stat testid="stat-lights" icon="bulb" label={t("dashboard.lightsOn")} value={stats.lights} />
+          <Stat testid="stat-power" icon="energy" label={t("dashboard.powerNow")} value={stats.power} />
+          <Stat testid="stat-hub" icon="hub" label={t("dashboard.hubLabel")}
+            value={hubs.isSuccess ? t(hubOnline ? "hub.online" : "hub.offline") : "—"} />
+          <Stat testid="stat-attention" icon={stats.attention ? "alert" : "shield"}
+            label={stats.attention ? t("dashboard.attention") : t("dashboard.allGood")} value={String(stats.attention)} />
+        </div>
+      </section>
+      <nav className="room-tabs" aria-label={t("dashboard.rooms")}>
+        <button aria-pressed={room === null} onClick={() => setRoom(null)}>
+          {pinned.length ? t("dashboard.pinned") : t("dashboard.allDevices")}</button>
+        {(rooms.data ?? []).map((r) => (
+          <button key={r.id} aria-pressed={room === r.id} onClick={() => setRoom(r.id)}>{r.name}</button>
+        ))}
+        <Link to="/rooms" className="room-tabs-more" aria-label={t("nav.rooms")}><Icon name="more" size={20} /></Link>
+      </nav>
       <div className="dgrid">{shown.map((d) => <DeviceTile key={d.id} device={d} role={home?.my_role} />)}</div>
+      {!pinned.length && <p className="muted hint">{t("dashboard.pinHint")}</p>}
     </>
   );
 }
@@ -144,5 +166,16 @@ function PanelBanner({ devices }: { devices: Device[] }) {
       </span>
       <Icon name="chevron" size={18} />
     </Link>
+  );
+}
+
+/** Grey placeholder cards while the first data loads (no fake values). */
+function Skeleton() {
+  const { t } = useTranslation();
+  return (
+    <div aria-busy="true" aria-label={t("app.loading")}>
+      <div className="sum-card skeleton" />
+      <div className="dgrid">{[0, 1, 2, 3].map((i) => <div key={i} className="dtile skeleton" />)}</div>
+    </div>
   );
 }

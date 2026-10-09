@@ -8,7 +8,6 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { Device, Role, Value } from "../api/types";
 import { actionLabel, can } from "../lib/contracts";
-import { usePrefs } from "../lib/prefs";
 import { formatValue, valueBadge } from "../lib/status";
 import { deviceVisual } from "../lib/visual";
 import { CommandStatus } from "./CommandStatus";
@@ -51,8 +50,6 @@ function extra(d: Device, t: (k: string) => string): string | null {
 
 export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
   const { t } = useTranslation();
-  const { pinned, togglePin } = usePrefs();
-  const isPinned = (pinned[device.home_id] ?? []).includes(device.id);
   const v = deviceVisual(device);
   const { doSend, tracked, busy, pendingFor, pinUi } = useDeviceSend(device);
   const offline = !device.hub_online || device.availability.status === "offline" || !device.enabled;
@@ -69,23 +66,27 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
   const disabledFor = (cap: string) => !allowed(cap) || busy || offline || (cap === "breaker" && tripped);
   const more = extra(device, t);
 
-  let control: JSX.Element;
+  // The card's own corner power button (phone home-app style); the icon only shows what it is.
+  let power: JSX.Element | null = null;
   if (toggleCap) {
     const spec = TOGGLE[toggleCap];
     const on = bool(c[toggleCap].attributes[spec.attr]);
     const go = (a: [string, Record<string, unknown>?]) => doSend(toggleCap, a[0], a[1]);
-    control = on === null
-      ? <span className="td-ico" aria-hidden="true"><Icon name={v.icon} size={24} /></span>
-      : (
+    if (on !== null) {
+      power = (
         <button type="button" role="switch" aria-checked={on} aria-label={`${device.name}: ${t(`cap.${toggleCap}`)}`}
-          className="td-ico" data-pending={pendingFor(toggleCap) || undefined} disabled={disabledFor(toggleCap)}
+          className="td-power" data-pending={pendingFor(toggleCap) || undefined} disabled={disabledFor(toggleCap)}
           onClick={() => go(on ? spec.off : spec.on)}>
-          <Icon name={v.icon} size={24} />
+          <Icon name="power" size={18} strokeWidth={2.4} />
         </button>
       );
-  } else {
-    control = <span className="td-ico" aria-hidden="true" data-pending={pending || undefined}><Icon name={v.icon} size={24} /></span>;
+    }
   }
+  const control = (
+    <span className="td-ico" aria-hidden="true" data-pending={(toggleCap ? pendingFor(toggleCap) : pending) || undefined}>
+      <Icon name={v.icon} size={26} />
+    </span>
+  );
 
   // Explicit actions where a single tap would be a guess (unknown state) or is not on/off.
   const pills: { cap: string; action: string; icon: string; params?: Record<string, unknown>; label?: string }[] = [];
@@ -123,10 +124,7 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
     <article className={cls} data-testid={`device-${device.key}`} data-active={v.active === null ? "unknown" : String(v.active)}>
       <div className="td-top">
         {control}
-        <button className="td-star" aria-pressed={isPinned} aria-label={isPinned ? t("dashboard.unpin") : t("dashboard.pin")}
-          onClick={() => togglePin(device.home_id, device.id)}>
-          <Icon name="star" size={16} fill={isPinned ? "currentColor" : "none"} />
-        </button>
+        {power}
       </div>
       <Link className="td-name" to={`/devices/${device.id}`}>{device.name}</Link>
       <div className="td-state" data-testid={`value-${mainLabel}`}>

@@ -36,14 +36,13 @@ export function PowerSwitch({ on, label, pending, disabled, onTurnOn, onTurnOff 
       </div>
     );
   }
+  // The big round power button of the phone home apps; rings pulse while it is ON (reported).
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} className="pswitch"
+    <button type="button" role="switch" aria-checked={on} aria-label={label} className="pround"
       data-state={on ? "on" : "off"} data-pending={pending} disabled={disabled}
       onClick={on ? onTurnOff : onTurnOn}>
-      <span className="track" aria-hidden="true">
-        <span className="lbl on">I</span><span className="lbl off">O</span>
-        <span className="knob"><Icon name="power" size={18} strokeWidth={2.4} /></span>
-      </span>
+      <span className="ring" aria-hidden="true" />
+      <Icon name="power" size={34} strokeWidth={2.2} />
     </button>
   );
 }

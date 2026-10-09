@@ -162,7 +162,8 @@ if [ "$FIRST" = 1 ] && [ -z "$INIT_DATABASE_URL" ]; then
   say "PostgreSQL baza"
   base="$(printf '%s' "${DOMAIN%%.*}" | tr -c 'a-z0-9_\n' '_')"
   ask DB_NAME "Baza nomi" "${DB_NAME:-${CP_USER}_${base}}"
-  ask DB_USER "Baza foydalanuvchisi" "${DB_USER:-${CP_USER}_${base}}"
+  # cPanel refuses a user named exactly like a database.
+  ask DB_USER "Baza foydalanuvchisi" "${DB_USER:-${CP_USER}_${base}user}"
   DB_PASS="${DB_PASS:-}"
   while [ -z "$DB_PASS" ]; do
     ask_secret DB_PASS "Baza foydalanuvchisi paroli (ko'rinmaydi; yangi bo'lsa — o'ylab toping)"

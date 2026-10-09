@@ -66,7 +66,7 @@ Skript faqat 4 narsani so'raydi:
 | Savol | Nima yozasiz |
 |---|---|
 | Subdomen | `smy.itcode.uz` |
-| Baza nomi / foydalanuvchisi | **Enter** (o'zi `itcode_smy` ni taklif qiladi) |
+| Baza nomi / foydalanuvchisi | **Enter** (o'zi `itcode_smy` va `itcode_smyuser` ni taklif qiladi) |
 | Baza paroli | Yangi parol o'ylab toping (skript bazani o'zi yaratadi). Bazani o'zingiz yaratgan bo'lsangiz, uning parolini yozing |
 | Email va ilova paroli | Ilovaga shu email va parol bilan kirasiz (kamida 10 belgi, ikki marta) |
 

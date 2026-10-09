@@ -106,8 +106,8 @@ esac
     assert code == 0, out
     calls = log.read_text()
     assert "create_database name=itcode_smy" in calls
-    assert "create_user name=itcode_smy" in calls
-    assert "grant_all_privileges user=itcode_smy database=itcode_smy" in calls
+    assert "create_user name=itcode_smyuser" in calls
+    assert "grant_all_privileges user=itcode_smyuser database=itcode_smy" in calls
     assert "web=/home/itcode/public_html/smy" in out                 # Document Root from cPanel
 
 

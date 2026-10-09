@@ -259,13 +259,16 @@ def test_install_script_first_run_creates_owner_and_update_reuses_answers(server
            "RESTART_CMD": str(server.restart), "PIP_INSTALL": ":", "SKIP_CRON": "1",
            "OWNER_EMAIL": "ega@example.uz", "OWNER_NAME": "Ega", "HOME_NAME": "Uy",
            "OWNER_PASSWORD": "correct-horse-battery"}
+    # A wrong answer remembered from an earlier try must not beat the value given now.
+    server.state.mkdir(parents=True, exist_ok=True)
+    (server.state / "install.conf").write_text("DOMAIN=itcode_smarthome\nWEB_DIR=/nowhere\n")
     p = subprocess.run(["bash", str(rel / "install.sh")], env=env, capture_output=True, text=True,
                        timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
     assert "O'rnatildi" in p.stdout and "Owner created" in p.stdout
     assert psql(server.psql_url, "SELECT email FROM users") == "ega@example.uz"
     conf = (server.state / "install.conf").read_text()
-    assert "home.example.uz" in conf and "postgresql" not in conf      # no secrets remembered
+    assert "home.example.uz" in conf and "postgresql" not in conf and "nowhere" not in conf      # no secrets remembered
     assert "PUBLIC_BASE_URL=https://home.example.uz" in (server.app / ".env").read_text()
     # Update: answers come from install.conf; no new owner, no DB question.
     rel2 = server.release("v10")

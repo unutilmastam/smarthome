@@ -15,7 +15,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="${STATE_DIR:-$HOME/sh-deploy}"
 CONF="$STATE_DIR/install.conf"
 mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
-[ -f "$CONF" ] && . "$CONF"
+# Remembered answers are defaults only: a value given in the environment wins.
+if [ -f "$CONF" ]; then
+  for _k in DOMAIN APP_DIR WEB_DIR VENV_ACTIVATE; do
+    [ -n "${!_k:-}" ] || eval "$(grep -E "^$_k=" "$CONF" | head -1)"
+  done
+fi
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 ask() {  # ask VAR "Question" "default"

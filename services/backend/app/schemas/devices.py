@@ -23,6 +23,10 @@ class DeviceIn(Model):
     unsupported: List[str] = Field(default_factory=list)
     fail_safe_state: Optional[dict] = None
     enabled: bool = True
+    # Devices that are not ours (ADR 0016): how the hub reaches them, and their secret
+    # (Tuya Local Key). The secret is write-only: it is sealed and never returned.
+    connection: Optional[dict] = None
+    secret: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[\x21-\x7e]+$")
 
 
 class DevicePatch(Model):
@@ -34,3 +38,5 @@ class DevicePatch(Model):
     unsupported: Optional[List[str]] = None
     fail_safe_state: Optional[dict] = None
     enabled: Optional[bool] = None
+    connection: Optional[dict] = None
+    secret: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[\x21-\x7e]+$")

@@ -1,6 +1,7 @@
 """Hub-facing API (hub token auth). The Hub always connects outbound."""
 
 import json
+import logging
 from functools import lru_cache
 from typing import Optional
 
@@ -15,6 +16,7 @@ from app.api.deps import get_contracts, get_db
 from app.api.hub_auth import get_hub
 from app.core.config import Settings, get_settings
 from app.core.contracts import Contracts
+from app.core.secretbox import SecretBoxError, open_ as open_secret
 from app.core.errors import validation_error
 from app.core.responses import ok
 from app.db.types import utcnow
@@ -29,6 +31,7 @@ from app.services.notifications import clean_health, dispatch_now
 from app.services.hub_reports import apply_report
 from app.services.telemetry import ingest as ingest_telemetry
 
+log = logging.getLogger("app.hub")
 router = APIRouter(prefix="/hub", tags=["hub"])
 
 
@@ -112,9 +115,20 @@ def post_report(body: dict = Body(...), hub: Hub = Depends(get_hub),
     return ok(apply_report(db, hub, contracts, body))
 
 
+def _secret(d: Device, settings: Settings) -> Optional[str]:
+    """Only the home's own hub ever gets a device secret (ADR 0016), and only here."""
+    if not d.secret_enc:
+        return None
+    try:
+        return open_secret(settings.signing_master_key, d.secret_enc, str(d.id))
+    except SecretBoxError:
+        log.error("device %s: sealed secret does not open", d.key)
+        return None
+
+
 @router.get("/config")
 def get_config(hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
-               contracts: Contracts = Depends(get_contracts)):
+               contracts: Contracts = Depends(get_contracts), settings: Settings = Depends(get_settings)):
     home = db.get(Home, hub.home_id)
     devices = db.scalars(select(Device).where(Device.home_id == hub.home_id)
                          .order_by(Device.key)).all()
@@ -127,7 +141,8 @@ def get_config(hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
             {"id": str(d.id), "key": d.key, "name": d.name, "adapter": d.adapter,
              "protocol": d.protocol, "model": d.model, "enabled": d.enabled,
              "fail_safe_state": d.fail_safe_state, "unsupported": d.unsupported or [],
-             "capabilities": {c.capability: c.config_json or {} for c in d.capabilities}}
+             "capabilities": {c.capability: c.config_json or {} for c in d.capabilities},
+             **({"connection": d.connection, "secret": _secret(d, settings)} if d.connection else {})}
             for d in devices
         ],
         "automations": automations_for_hub(db.scalars(

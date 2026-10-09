@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
 )
@@ -40,6 +41,10 @@ class Device(UUIDPk, Timestamps, Base):
     availability_ts: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
     # ADR 0014 watchdog: set when "device offline" was announced, cleared when it is back.
     offline_notified_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime)
+    # How the hub reaches a device that is not ours (ADR 0016), e.g. Tuya: profile, id, ip.
+    connection: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Its secret (Tuya local key), sealed (app.core.secretbox). Never returned by the API.
+    secret_enc: Mapped[Optional[str]] = mapped_column(Text)
 
     capabilities: Mapped[list["DeviceCapability"]] = relationship(
         back_populates="device",

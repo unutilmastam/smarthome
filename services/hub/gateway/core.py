@@ -25,6 +25,7 @@ from gateway.frigate import DISK_WARNING_PCT, FrigateError, FrigateMonitor
 from gateway.store import Store
 from gateway.telemetry import RAW_RETENTION, Aggregator
 from gateway.timeutil import iso, parse_ts, utcnow
+from gateway.tuya import TuyaBridge
 from gateway.verifier import verify_envelope
 from gateway.watchers import DEFAULT_LEFT_OPEN_S, DEFAULT_NO_EFFECT_S, ClimateWatcher, GateWatcher
 
@@ -48,7 +49,8 @@ class Pending:
 
 class Gateway:
     def __init__(self, settings: GatewaySettings, backend: Optional[BackendClient] = None,
-                 store: Optional[Store] = None, contracts: Optional[Contracts] = None):
+                 store: Optional[Store] = None, contracts: Optional[Contracts] = None,
+                 tuya_client_factory=None):
         self.s = settings
         self.contracts = contracts or Contracts(settings.contracts_dir)
         self.store = store or Store(settings.db_path)
@@ -88,6 +90,12 @@ class Gateway:
         self._stop = asyncio.Event()
         # One flush at a time: two concurrent flushes would send the same outbox item twice.
         self._flush_lock = asyncio.Lock()
+        # Tuya devices on the LAN (ADR 0016): the hub speaks their protocol itself.
+        self.tuya = TuyaBridge(
+            publish=self._handle_state,
+            availability=lambda k, status: self.handle_message(f"home/{k}/availability", status.encode()),
+            store_get=self.store.get_kv, store_put=self.store.put_kv,
+            **({"client_factory": tuya_client_factory} if tuya_client_factory else {}))
         if cached:  # last known config: the hub works offline from the first second
             self._apply_config(cached)
 
@@ -98,10 +106,12 @@ class Gateway:
             self._poll_loop(), self._flush_loop(), self._full_report_loop(),
             self._cloud_loop(), self._cloud_publish_loop(), self._frigate_loop(),
             self._watch_loop())]
+        self.tuya.start()
         await self._stop.wait()
 
     async def stop(self) -> None:
         self._stop.set()
+        await self.tuya.stop()
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -112,6 +122,7 @@ class Gateway:
         self.devices = {d["key"]: d for d in cfg.get("devices", [])}
         self.home_id = (cfg.get("home") or {}).get("id")
         self._sync_virtual_devices()
+        self.tuya.sync(self.devices)
         self.automations.load(cfg.get("automations") or [], cfg.get("home"))
 
     # ---- virtual devices on the hub (ADR 0012) --------------------------------------
@@ -365,6 +376,11 @@ class Gateway:
                 ack = {"status": res.status}
                 if res.reason:
                     ack["reason"], ack["detail"] = res.reason, res.detail
+                if not pend.ack.done():
+                    pend.ack.set_result(ack)
+            elif self.tuya.has(p["device_key"]):
+                pend.published = True
+                ack = await self.tuya.command(p["device_key"], p["capability"], p["action"], p["params"])
                 if not pend.ack.done():
                     pend.ack.set_result(ack)
             else:

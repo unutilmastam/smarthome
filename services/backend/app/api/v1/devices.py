@@ -18,6 +18,8 @@ from app.schemas.common import Page
 from app.schemas.devices import DeviceIn, DevicePatch
 from app.services import audit
 from app.services.device_view import device_view
+from app.core.secretbox import seal
+from app.services.adapters import check_connection
 from app.services.devices import active_hub, check_room, set_capabilities, validate_capabilities
 
 router = APIRouter(tags=["devices"])
@@ -65,15 +67,19 @@ def create_device(home_id: uuid.UUID, body: DeviceIn, request: Request,
     m = membership_or_404(db, home_id, p.user)
     require_permission(m, "configure")
     validate_capabilities(contracts, body.capabilities, body.unsupported)
+    unsupported = check_connection(body.adapter, body.connection, body.capabilities, body.unsupported,
+                                   has_secret=bool(body.secret))
     check_room(db, home_id, body.room_id)
     if db.scalar(select(Device.id).where(Device.home_id == home_id, Device.key == body.key)):
         raise conflict(f"Device key '{body.key}' already exists in this home")
     d = Device(
         id=uuid.uuid4(), home_id=home_id, room_id=body.room_id, key=body.key, name=body.name,
         adapter=body.adapter, protocol=body.protocol, model=body.model, icon=body.icon,
-        fail_safe_state=body.fail_safe_state, unsupported=sorted(body.unsupported),
-        enabled=body.enabled, availability="unknown",
+        fail_safe_state=body.fail_safe_state, unsupported=sorted(unsupported),
+        enabled=body.enabled, availability="unknown", connection=body.connection,
     )
+    if body.secret:
+        d.secret_enc = seal(settings.signing_master_key, body.secret, str(d.id))
     set_capabilities(d, body.capabilities)
     db.add(d)
     audit.record(db, "device.created", actor_id=p.user.id, home_id=home_id,
@@ -117,18 +123,25 @@ def patch_device(device_id: uuid.UUID, body: DevicePatch, request: Request,
     unsupported = changes.get("unsupported", d.unsupported or [])
     if "capabilities" in changes or "unsupported" in changes:
         validate_capabilities(contracts, caps, unsupported)
+    if d.adapter == "tuya" or "connection" in changes:
+        unsupported = check_connection(d.adapter, changes.get("connection", d.connection), caps, unsupported,
+                                       has_secret=bool(changes.get("secret") or d.secret_enc))
+        if unsupported != (d.unsupported or []):
+            changes["unsupported"] = unsupported
     if "room_id" in changes:
         check_room(db, d.home_id, changes["room_id"])
-    for k in ("name", "room_id", "model", "icon", "fail_safe_state", "enabled"):
+    for k in ("name", "room_id", "model", "icon", "fail_safe_state", "enabled", "connection"):
         if k in changes:
             setattr(d, k, changes[k])
+    if changes.get("secret"):
+        d.secret_enc = seal(settings.signing_master_key, changes["secret"], str(d.id))
     if "unsupported" in changes:
         d.unsupported = sorted(unsupported)
     if "capabilities" in changes:
         set_capabilities(d, caps)
     audit.record(db, "device.updated", actor_id=p.user.id, home_id=d.home_id,
                  target_type="device", target_id=d.id, ip=client_ip(request),
-                 details={"fields": sorted(changes)})
+                 details={"fields": sorted(changes)})   # names only: never the secret itself
     db.commit()
     db.refresh(d)
     return ok(device_view(d, contracts, settings, active_hub(db, d.home_id)))

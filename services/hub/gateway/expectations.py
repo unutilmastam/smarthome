@@ -82,4 +82,17 @@ def expectation(capability: str, action: str, params: dict,
     if capability == "alarm":
         return {"arm_away": _eq("state", "armed_away"), "arm_home": _eq("state", "armed_home"),
                 "disarm": _eq("state", "disarmed")}.get(action)
+    if capability == "remote" and action in ("learn", "forget"):
+        # IR has no feedback, but a learned code is real: the hub lists it only once captured.
+        want = action == "learn"
+
+        def has_button(attrs):
+            if "buttons" not in attrs or not isinstance(attrs["buttons"], list):
+                return None
+            return (params["button"] in attrs["buttons"]) == want
+        return has_button
+    if capability == "media":
+        return {"turn_on": _eq("on", True), "turn_off": _eq("on", False)}.get(action) \
+            or ({"set_volume": _eq("volume", params.get("volume")), "set_mute": _eq("muted", params.get("muted")),
+                 "set_channel": _eq("channel", params.get("channel"))}.get(action))
     return None  # other climate actions (IR, assumed) and anything unknown: no confirmation

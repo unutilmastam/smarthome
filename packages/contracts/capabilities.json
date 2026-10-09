@@ -387,6 +387,56 @@
           "description": "Siren stopped at siren_max_s; the alarm stays triggered until disarmed."
         }
       }
+    },
+    "remote": {
+      "title": "Universal IR remote (Tuya smart pult): buttons learned from the original remote (ADR 0016)",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "buttons": { "type": "array", "items": { "type": "string" }, "maxItems": 200,
+          "description": "Names of the buttons whose IR codes the hub holds. Changes only when a learn really captured a code." }
+      },
+      "actions": {
+        "press": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } },
+        "learn": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } },
+        "forget": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } }
+      },
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "layout": { "enum": ["tv", "ac", "other"], "description": "Which remote the app draws. Default 'other'." }
+        }
+      }
+    },
+    "media": {
+      "title": "TV / media device (Yandex Alisa cloud; native TV protocols later) (ADR 0016)",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "on": { "type": "boolean" },
+        "volume": { "type": "number", "minimum": 0, "maximum": 100 },
+        "muted": { "type": "boolean" },
+        "channel": { "type": "integer", "minimum": 0, "maximum": 9999 },
+        "input": { "type": "string", "maxLength": 40 }
+      },
+      "actions": {
+        "turn_on": { "params": { "type": "object", "additionalProperties": false } },
+        "turn_off": { "params": { "type": "object", "additionalProperties": false } },
+        "set_volume": { "params": { "type": "object", "required": ["volume"], "additionalProperties": false,
+          "properties": { "volume": { "type": "number", "minimum": 0, "maximum": 100 } } } },
+        "volume_up": { "params": { "type": "object", "additionalProperties": false } },
+        "volume_down": { "params": { "type": "object", "additionalProperties": false } },
+        "set_mute": { "params": { "type": "object", "required": ["muted"], "additionalProperties": false,
+          "properties": { "muted": { "type": "boolean" } } } },
+        "set_channel": { "params": { "type": "object", "required": ["channel"], "additionalProperties": false,
+          "properties": { "channel": { "type": "integer", "minimum": 0, "maximum": 9999 } } } },
+        "channel_up": { "params": { "type": "object", "additionalProperties": false } },
+        "channel_down": { "params": { "type": "object", "additionalProperties": false } }
+      }
     }
   }
 }

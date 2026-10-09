@@ -115,3 +115,18 @@ def test_short_owner_password_stops_before_any_change(box):
     (box.state / "db_ok").write_text("")
     code, out = box.run(DOMAIN="smy.itcode.uz", DB_PASS="x", OWNER_EMAIL="a@b.uz", OWNER_PASSWORD="short")
     assert code == 11 and "10 belgi" in out
+
+
+def test_server_dns_lag_uses_the_server_ip(box):
+    """A new subdomain resolves everywhere but on the server itself (cached NXDOMAIN):
+    the checks and the deploy's health check go to the server's own IP."""
+    (box.state / "db_ok").write_text("")
+    box.stub("curl", 'case "$*" in *--resolve\\ smy.itcode.uz:443:91.213.99.99*) exit 0 ;; esac\nexit 6\n')
+    box.stub("uapi", '''case "$*" in
+  *DomainInfo*) echo '{"result":{"status":1,"data":{"documentroot":"/home/itcode/smy.itcode.uz","ip":"91.213.99.99"}}}' ;;
+  *) echo '{"result":{"status":0,"errors":["no"]}}' ;;
+esac
+''')
+    code, out = box.run(DOMAIN="smy.itcode.uz", DB_PASS="x", OWNER_EMAIL="a@b.uz", OWNER_PASSWORD="0123456789")
+    assert code == 0, out
+    assert "resolve=smy.itcode.uz:443:91.213.99.99" in out and "91.213.99.99 orqali" in out

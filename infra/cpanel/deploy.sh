@@ -11,6 +11,7 @@
 #
 # Required env: APP_DIR WEB_DIR STAGE_DIR STATE_DIR VENV_ACTIVATE HEALTH_URL EXPECT_BUILD
 # Optional env: KEEP_BACKUPS (10) HEALTH_TIMEOUT (120 s) RESTART_CMD
+#               HEALTH_RESOLVE (host:443:ip for curl --resolve, when the server's DNS lags)
 #               INIT_DATABASE_URL (only used to create APP_DIR/.env on the first deploy)
 #               TELEGRAM_BOT_TOKEN PUBLIC_BASE_URL (ADR 0014: written into APP_DIR/.env)
 set -uo pipefail
@@ -154,7 +155,7 @@ fi
 health_ok() {  # $1 = expected build
   local deadline=$((SECONDS + HEALTH_TIMEOUT)) body
   while [ "$SECONDS" -lt "$deadline" ]; do
-    body="$(curl -fsS --max-time 10 "$HEALTH_URL" 2>/dev/null || true)"
+    body="$(curl -fsS --max-time 10 ${HEALTH_RESOLVE:+--resolve "$HEALTH_RESOLVE"} "$HEALTH_URL" 2>/dev/null || true)"
     case "$body" in
       *'"status":"ok"'*'"build":"'"$1"'"'*) return 0 ;;
     esac

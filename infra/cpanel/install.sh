@@ -100,11 +100,33 @@ case "$WEB_DIR" in /*) ;; *) WEB_DIR="$HOME/$WEB_DIR" ;; esac
 ok "Sayt papkasi: $WEB_DIR"
 
 # ---- 4. https must already work (otherwise the final health check fails) ---------------
+# A brand-new subdomain often resolves everywhere except on the server itself (its resolver
+# cached "no such name" for a while). Then the server's own IP is used for the checks
+# (curl --resolve), so nobody has to wait for that cache to expire.
+HEALTH_RESOLVE="${HEALTH_RESOLVE:-}"
+server_ip() {
+  local ip
+  ip="$(uapi_json DomainInfo single_domain_data domain="$DOMAIN" \
+    | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("ip") or "")' 2>/dev/null)"
+  [ -n "$ip" ] || ip="$(getent hosts "${DOMAIN#*.}" 2>/dev/null | awk '{print $1; exit}')"
+  printf '%s' "$ip"
+}
+https_try() {
+  curl -sS -o /dev/null --max-time 20 ${HEALTH_RESOLVE:+--resolve "$HEALTH_RESOLVE"} \
+    "https://$DOMAIN/" 2>"$STATE_DIR/https-check.err"
+}
 if [ "${SH_SKIP_HTTPS_CHECK:-0}" != 1 ]; then
-  curl -sS -o /dev/null --max-time 20 "https://$DOMAIN/" 2>"$STATE_DIR/https-check.err"
-  case $? in
+  https_try; rc=$?
+  if [ "$rc" = 6 ]; then
+    ip="$(server_ip)"
+    if [ -n "$ip" ]; then
+      HEALTH_RESOLVE="$DOMAIN:443:$ip"; https_try; rc=$?
+      [ "$rc" = 6 ] || echo "  (server DNS'i $DOMAIN ni hali bilmaydi: tekshiruv $ip orqali)"
+    fi
+  fi
+  case $rc in
     0) ok "https ishlayapti" ;;
-    6) stop "\"$DOMAIN\" internetda topilmadi. cPanel → Domains da shu subdomen yaratilganini tekshiring (yangi subdomen 5–15 daqiqada ishlay boshlaydi)." ;;
+    6|7) stop "\"$DOMAIN\" topilmadi. cPanel → Domains da shu subdomen yaratilganini tekshiring (yangi subdomen 5–15 daqiqada ishlay boshlaydi)." ;;
     35|51|53|58|59|60|77|80|82|83|90|91)
        uapi_json SSL start_autossl_check >/dev/null 2>&1 && echo "  AutoSSL ishga tushirildi."
        stop "\"$DOMAIN\" uchun SSL sertifikat hali yo'q. cPanel → SSL/TLS Status → $DOMAIN → Run AutoSSL, 5–10 daqiqa kutib qayta urining." ;;
@@ -194,8 +216,8 @@ fi
     "$DOMAIN" "$APP_DIR" "$WEB_DIR" "$VENV_ACTIVATE" > "$CONF" )
 
 if [ "${SH_DRY_RUN:-0}" = 1 ]; then
-  printf 'PLAN domain=%s app=%s web=%s venv=%s first=%s db=%s\n' "$DOMAIN" "$APP_DIR" "$WEB_DIR" \
-    "$VENV_ACTIVATE" "$FIRST" "$(printf '%s' "$INIT_DATABASE_URL" | sed 's#://[^:]*:[^@]*@#://***@#')"
+  printf 'PLAN domain=%s app=%s web=%s venv=%s first=%s resolve=%s db=%s\n' "$DOMAIN" "$APP_DIR" "$WEB_DIR" \
+    "$VENV_ACTIVATE" "$FIRST" "$HEALTH_RESOLVE" "$(printf '%s' "$INIT_DATABASE_URL" | sed 's#://[^:]*:[^@]*@#://***@#')"
   exit 0
 fi
 
@@ -205,7 +227,7 @@ echo "  Telefon ekrani o'chmasin va bu sahifani yopmang."
 rmdir "$STATE_DIR/lock" 2>/dev/null
 APP_DIR="$APP_DIR" WEB_DIR="$WEB_DIR" STAGE_DIR="$HERE" STATE_DIR="$STATE_DIR" \
 VENV_ACTIVATE="$VENV_ACTIVATE" EXPECT_BUILD="$BUILD" \
-HEALTH_URL="${HEALTH_URL:-https://$DOMAIN/api/v1/health}" \
+HEALTH_URL="${HEALTH_URL:-https://$DOMAIN/api/v1/health}" HEALTH_RESOLVE="$HEALTH_RESOLVE" \
 INIT_DATABASE_URL="$INIT_DATABASE_URL" PUBLIC_BASE_URL="https://$DOMAIN" \
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}" \
   bash "$HERE/deploy.sh" | tee "$STATE_DIR/last-install.log"

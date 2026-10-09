@@ -1,0 +1,99 @@
+# Home Hub stack. Build context is the repo root (contracts are shared).
+#   cp .env.example .env   # fill in values
+#   sh mosquitto/make-passwd.sh garden_lights main_meter ...   (device keys)
+#   docker compose up -d                    # broker + gateway
+#   docker compose --profile sim up -d      # + simulator (no real devices)
+# Faza 14: Docker's json-file logs grow without limit by default and can fill the hub's
+# system disk (the SQLite outbox lives there). Every service keeps at most 3 x 10 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mosquitto:
+    logging: *logging
+    image: eclipse-mosquitto:2
+    restart: always
+    # Docker's own iptables rules bypass ufw for published ports (Faza 14 finding), so every
+    # published port is bound to an explicit address: LAN for ESP32, never 0.0.0.0 / IPv6.
+    ports:
+      - "${HUB_LAN_IP:?set HUB_LAN_IP in .env}:1883:1883"   # LAN only. Never forward on the router.
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto-data:/mosquitto/data
+
+  gateway:
+    logging: *logging
+    build:
+      context: ../..
+      dockerfile: services/hub/Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      DB_PATH: /data/hub.sqlite3
+    volumes:
+      - hub-data:/data
+    depends_on:
+      - mosquitto
+
+  # ESPHome dashboard: compile + OTA from the browser (ARCHITECTURE 15.5). LAN/Tailscale only
+  # (ufw), password protected. Configs: ./esphome (copy devices/esphome/* + secrets.yaml).
+  esphome:
+    logging: *logging
+    image: ghcr.io/esphome/esphome:2026.9.1
+    restart: always
+    network_mode: host   # mDNS + OTA to devices on the LAN
+    environment:
+      USERNAME: ${ESPHOME_USERNAME:-admin}
+      PASSWORD: ${ESPHOME_PASSWORD:?set ESPHOME_PASSWORD in .env}
+    volumes:
+      - ./esphome:/config
+
+  # Frigate NVR + go2rtc (profile "cameras"). Recordings on the surveillance HDD mounted
+  # at /mnt/nvr. Port 8971 (login) is reachable only on LAN/Tailscale (ufw), never forwarded.
+  frigate:
+    logging: *logging
+    profiles: ["cameras"]
+    image: ghcr.io/blakeblackshear/frigate:0.18.0
+    restart: always
+    shm_size: "256mb"
+    environment:
+      FRIGATE_RTSP_USER: ${FRIGATE_RTSP_USER:-}
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
+    volumes:
+      - ./frigate:/config
+      - /mnt/nvr:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:   # explicit addresses only (Docker bypasses ufw): LAN + Tailscale, never 0.0.0.0
+      - "${HUB_LAN_IP:?set HUB_LAN_IP in .env}:8971:8971"          # Frigate UI/API (login)
+      - "${HUB_TAILNET_IP:-127.0.0.1}:8971:8971"                    # same over Tailscale
+      - "${HUB_LAN_IP:?set HUB_LAN_IP in .env}:8555:8555/tcp"      # WebRTC
+      - "${HUB_LAN_IP:?set HUB_LAN_IP in .env}:8555:8555/udp"
+      - "${HUB_TAILNET_IP:-127.0.0.1}:8555:8555/tcp"
+      - "${HUB_TAILNET_IP:-127.0.0.1}:8555:8555/udp"
+
+  simulator:
+    logging: *logging
+    profiles: ["sim"]
+    build:
+      context: ../..
+      dockerfile: services/hub/Dockerfile
+    restart: always
+    command: ["python", "-m", "simulator", "/app/simulator/devices.example.json"]
+    environment:
+      MQTT_HOST: mosquitto
+      SIM_DEVICE_PASSWORD: ${SIM_DEVICE_PASSWORD:?set SIM_DEVICE_PASSWORD in .env}
+    depends_on:
+      - mosquitto
+
+volumes:
+  mosquitto-data:
+  hub-data:

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "description": "Role -> permission matrix (ARCHITECTURE 9). Guest grants are a later phase: until then guest = view only. Family camera_live is 'configurable' in ARCHITECTURE 9 and defaults to deny.",
+  "permissions": [
+    "view", "control_basic", "control_access", "control_power",
+    "camera_live", "camera_archive", "configure", "manage_users", "view_audit"
+  ],
+  "roles": {
+    "owner": ["view", "control_basic", "control_access", "control_power", "camera_live", "camera_archive", "configure", "manage_users", "view_audit"],
+    "admin": ["view", "control_basic", "control_access", "control_power", "camera_live", "camera_archive", "configure", "view_audit"],
+    "family": ["view", "control_basic", "control_access"],
+    "guest": ["view"],
+    "viewer": ["view"]
+  }
+}

@@ -1,0 +1,37 @@
+# Document root of home.<domain>.uz (PWA). The Python app is mounted at /api by
+# cPanel "Setup Python App" (it adds its own Passenger block for /api).
+Options -Indexes
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Force HTTPS (AutoSSL).
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+  # Never let the SPA fallback swallow API calls.
+  RewriteRule ^api(/|$) - [L]
+  # SPA routes -> index.html (existing files are served as is).
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  # connect-src: own API + the managed MQTT broker over WSS (ADR 0008).
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://*.emqxsl.com wss://*.emqx.cloud; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  # Service worker and entry page must never be cached, hashed assets forever.
+  <FilesMatch "^(sw\.js|index\.html|registerSW\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(js|css|png|svg)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>

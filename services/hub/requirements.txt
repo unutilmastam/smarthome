@@ -1,0 +1,11 @@
+# Home Hub runtime (pinned). Python 3.10 compatible.
+aiomqtt==2.5.1
+paho-mqtt==2.1.0
+httpx==0.28.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+jsonschema==4.26.0
+# Time zones for automations (python:*-slim has no system tz database).
+tzdata==2026.5
+# Tuya devices on the LAN, local protocol (ADR 0016).
+tinytuya==1.20.0

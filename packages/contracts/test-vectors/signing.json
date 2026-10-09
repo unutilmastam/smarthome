@@ -1,0 +1,162 @@
+{
+  "description": "HMAC-SHA256 command signing test vectors (ARCHITECTURE 4.4, ADR 0004/0007). Backend and Hub MUST both reproduce every canonical string and signature exactly.",
+  "algorithm": {
+    "home_signing_key": "HMAC-SHA256(utf8(master_key), utf8('home-signing:' + home_id))",
+    "signature": "lowercase hex HMAC-SHA256(home_signing_key, utf8(canonical_json(payload)))",
+    "canonical_json": "keys sorted, separators (',', ':'), no whitespace, UTF-8, no NaN/Infinity"
+  },
+  "master_key": "test-vector-master-key-0123456789abcdef0123456789abcdef",
+  "home_id": "5d1f0a3e-7c2b-4e9a-9d61-2f3b4c5d6e7f",
+  "home_signing_key_hex": "7ecd6fb83d01c5f94b73de322341f5c8be3893aface8cc9d8c01aa94cd1544b8",
+  "cases": [
+    {
+      "name": "switch_turn_on",
+      "note": "Empty params object.",
+      "payload": {
+        "command_id": "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "garden_lights",
+        "capability": "switch",
+        "action": "turn_on",
+        "params": {},
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "canonical": "{\"action\":\"turn_on\",\"capability\":\"switch\",\"command_id\":\"6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f\",\"device_id\":\"0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c\",\"device_key\":\"garden_lights\",\"expires_at\":\"2026-10-07T12:50:10.000Z\",\"issued_at\":\"2026-10-07T12:50:00.000Z\",\"issued_by\":{\"role\":\"owner\",\"user_id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\"},\"params\":{}}",
+      "signature": "fd3f75d821954c063ab7bc59a955248398d8c4d03f37772fa01eada9834de07a"
+    },
+    {
+      "name": "dimmer_params",
+      "note": "Integer param.",
+      "payload": {
+        "command_id": "11111111-2222-4333-8444-555555555555",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "garden_lights",
+        "capability": "dimmer",
+        "action": "set_brightness",
+        "params": {
+          "brightness": 75
+        },
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "canonical": "{\"action\":\"set_brightness\",\"capability\":\"dimmer\",\"command_id\":\"11111111-2222-4333-8444-555555555555\",\"device_id\":\"0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c\",\"device_key\":\"garden_lights\",\"expires_at\":\"2026-10-07T12:50:10.000Z\",\"issued_at\":\"2026-10-07T12:50:00.000Z\",\"issued_by\":{\"role\":\"owner\",\"user_id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\"},\"params\":{\"brightness\":75}}",
+      "signature": "38383d6cf03e1e01fa342b9452490aa2cd8bf07a0d3eb5c7ee69e635586ba0c2"
+    },
+    {
+      "name": "gate_high_risk",
+      "note": "High risk: 5 s expiry.",
+      "payload": {
+        "command_id": "22222222-3333-4444-8555-666666666666",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "front_gate",
+        "capability": "cover",
+        "action": "open",
+        "params": {},
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:05.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "canonical": "{\"action\":\"open\",\"capability\":\"cover\",\"command_id\":\"22222222-3333-4444-8555-666666666666\",\"device_id\":\"0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c\",\"device_key\":\"front_gate\",\"expires_at\":\"2026-10-07T12:50:05.000Z\",\"issued_at\":\"2026-10-07T12:50:00.000Z\",\"issued_by\":{\"role\":\"owner\",\"user_id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\"},\"params\":{}}",
+      "signature": "c1e27287324599a90e4941878889d5c527f46b960ce13e7f031a63640baf6588"
+    },
+    {
+      "name": "float_param",
+      "note": "Float param: canonical form uses Python json repr (23.5).",
+      "payload": {
+        "command_id": "33333333-4444-4555-8666-777777777777",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "ac_bedroom",
+        "capability": "climate",
+        "action": "set_target_temp",
+        "params": {
+          "target_temp": 23.5
+        },
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "canonical": "{\"action\":\"set_target_temp\",\"capability\":\"climate\",\"command_id\":\"33333333-4444-4555-8666-777777777777\",\"device_id\":\"0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c\",\"device_key\":\"ac_bedroom\",\"expires_at\":\"2026-10-07T12:50:10.000Z\",\"issued_at\":\"2026-10-07T12:50:00.000Z\",\"issued_by\":{\"role\":\"owner\",\"user_id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\"},\"params\":{\"target_temp\":23.5}}",
+      "signature": "d2e7964164d685ac7d3ec8b189b550d1a97b5e38389aa726cb156a48a8026933"
+    },
+    {
+      "name": "non_ascii",
+      "note": "Non-ASCII is emitted as raw UTF-8 (ensure_ascii=False), not \\u escapes.",
+      "payload": {
+        "command_id": "44444444-5555-4666-8777-888888888888",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "garden_lights",
+        "capability": "switch",
+        "action": "turn_on",
+        "params": {
+          "note": "Bog' chiroqlari ✓"
+        },
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "canonical": "{\"action\":\"turn_on\",\"capability\":\"switch\",\"command_id\":\"44444444-5555-4666-8777-888888888888\",\"device_id\":\"0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c\",\"device_key\":\"garden_lights\",\"expires_at\":\"2026-10-07T12:50:10.000Z\",\"issued_at\":\"2026-10-07T12:50:00.000Z\",\"issued_by\":{\"role\":\"owner\",\"user_id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\"},\"params\":{\"note\":\"Bog' chiroqlari ✓\"}}",
+      "signature": "1dee7b20cbcf5cd211f46d714381358204e3240060ecfa35b1e4305ef7ddba10"
+    }
+  ],
+  "negative": [
+    {
+      "name": "tampered_params",
+      "payload": {
+        "command_id": "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "garden_lights",
+        "capability": "switch",
+        "action": "turn_on",
+        "params": {
+          "x": 1
+        },
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "signature": "fd3f75d821954c063ab7bc59a955248398d8c4d03f37772fa01eada9834de07a",
+      "valid": false
+    },
+    {
+      "name": "wrong_home_key",
+      "note": "signature made with key of another home",
+      "payload": {
+        "command_id": "6f1c2a8e-3b5d-4c7e-9f10-1a2b3c4d5e6f",
+        "device_id": "0b7a4c1e-8d2f-4e6a-b3c9-7d8e9f0a1b2c",
+        "device_key": "garden_lights",
+        "capability": "switch",
+        "action": "turn_on",
+        "params": {},
+        "issued_at": "2026-10-07T12:50:00.000Z",
+        "expires_at": "2026-10-07T12:50:10.000Z",
+        "issued_by": {
+          "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "role": "owner"
+        }
+      },
+      "signature": "367feaccd22ba53bf1cb4f04e1cbbc764169e6b1d8f2dfc15e44cf7656db03b3",
+      "valid": false
+    }
+  ]
+}

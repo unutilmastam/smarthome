@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/telemetry-batch.schema.json",
+  "title": "1-minute telemetry aggregates, Hub -> Backend (POST /hub/telemetry:batch)",
+  "description": "The hub keeps raw readings (7 days) and sends one aggregate per device, metric and UTC minute. Re-sending the same bucket replaces it (idempotent).",
+  "type": "object",
+  "required": ["schema", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "required": ["device_key", "metric", "ts", "avg", "min", "max", "last", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+          "metric": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+          "ts": { "type": "string", "format": "date-time", "pattern": ":00(\\.000)?Z$" },
+          "avg": { "type": "number" },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "last": { "type": "number" },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

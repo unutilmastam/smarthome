@@ -1,0 +1,8 @@
+# Reviewed false positives (Faza 14). Real secrets never go in the repo (CLAUDE.md rule 4).
+# Public HMAC test vector: derived from the published test master key in the same file.
+dd4b0351cac5f94e9ceddffe3e0e7b7a0e38aa8c:packages/contracts/test-vectors/signing.json:generic-api-key:10
+# Deliberately invalid refresh token used to test rejection.
+93311f8f03be3ea15b4ef14f446bce891095eda4:services/backend/tests/test_auth.py:generic-api-key:94
+# Same two lines when scanning the working tree (gitleaks dir).
+packages/contracts/test-vectors/signing.json:generic-api-key:10
+services/backend/tests/test_auth.py:generic-api-key:94

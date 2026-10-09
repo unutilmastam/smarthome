@@ -1,0 +1,73 @@
+# ESP32 with a door/window reed switch and a motion sensor (ARCHITECTURE 10: "Xavfsizlik",
+# Faza 11, ADR 0012). Zones of the hub's security system (gateway/alarm.py).
+#   contact.open      <- reed switch (magnet away = open)
+#   motion.detected   <- PIR (HC-SR501 / AM312) or LD2410 radar OUT pin
+# A sensor with only one of them: delete the other block and its capability in the cloud.
+# Inventory H-13 is open: pins are defaults. Sensors only report; they never get commands.
+
+substitutions:
+  device_key: front_door
+  friendly_name: "Kirish eshigi"
+  reed_pin: GPIO32
+  motion_pin: GPIO33
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+binary_sensor:
+  - platform: gpio
+    id: door_open
+    pin:
+      number: ${reed_pin}
+      mode: INPUT_PULLUP     # contact closed (magnet near) pulls LOW
+    filters:
+      - delayed_on_off: 50ms
+    state_topic: null
+    on_state:
+      - script.execute: publish_state
+  - platform: gpio
+    id: motion
+    pin:
+      number: ${motion_pin}
+      mode: INPUT_PULLDOWN
+    filters:
+      - delayed_off: 5s
+    state_topic: null
+    on_state:
+      - script.execute: publish_state
+
+script:
+  - id: publish_state
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            root["states"]["contact"]["open"] = id(door_open).state;
+            root["states"]["motion"]["detected"] = id(motion).state;
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            // Sensors have no actions: answer every command with "rejected".
+            const std::string cid = x["command_id"] | "";
+            if (cid.empty()) return;
+            id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+              root["schema"] = 1;
+              root["command_id"] = cid;
+              root["status"] = "rejected";
+              root["reason"] = "invalid_params";
+            }, 1, false);

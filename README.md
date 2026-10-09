@@ -7,7 +7,7 @@ Uy uchun to'liq boshqaruv tizimi: chiroq, elektr, darvoza, konditsioner, kamera,
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Tizim arxitekturasi (manba haqiqati) |
 | [docs/PHASES.md](docs/PHASES.md) | Bosqichma-bosqich qurish rejasi |
 | [CLAUDE.md](CLAUDE.md) | AI agent uchun ish qoidalari |
-| [docs/spec/capabilities.json](docs/spec/capabilities.json) | Qurilma imkoniyatlari spetsifikatsiyasi |
+| [packages/contracts/capabilities.json](packages/contracts/capabilities.json) | Qurilma imkoniyatlari spetsifikatsiyasi |
 
 ## Qanday boshlanadi
 

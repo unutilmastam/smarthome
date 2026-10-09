@@ -1,0 +1,442 @@
+{
+  "version": 1,
+  "description": "SmartHome capability registry. Single source of truth for backend, hub and web. Attribute specs and action params are JSON Schema.",
+  "risk_levels": {
+    "low": "Ordinary control (lights, sockets, climate).",
+    "medium": "Can waste water/energy or cause damage if left on (irrigation, pumps).",
+    "high": "Physical access or power cut (gates, locks, contactors, breakers). Requires PIN confirmation."
+  },
+  "capabilities": {
+    "switch": {
+      "title": "On/off",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "on": { "type": "boolean" }
+      },
+      "actions": {
+        "turn_on": { "params": { "type": "object", "additionalProperties": false } },
+        "turn_off": { "params": { "type": "object", "additionalProperties": false } },
+        "toggle": { "params": { "type": "object", "additionalProperties": false } }
+      }
+    },
+    "dimmer": {
+      "title": "Brightness",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "brightness": { "type": "integer", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {
+        "set_brightness": {
+          "params": {
+            "type": "object",
+            "required": ["brightness"],
+            "additionalProperties": false,
+            "properties": { "brightness": { "type": "integer", "minimum": 0, "maximum": 100 } }
+          }
+        }
+      }
+    },
+    "color": {
+      "title": "Color",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "rgb": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 },
+        "color_temp": { "type": "integer", "minimum": 1500, "maximum": 9000, "unit": "K" }
+      },
+      "actions": {
+        "set_rgb": {
+          "params": {
+            "type": "object",
+            "required": ["rgb"],
+            "additionalProperties": false,
+            "properties": {
+              "rgb": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 }
+            }
+          }
+        },
+        "set_color_temp": {
+          "params": {
+            "type": "object",
+            "required": ["color_temp"],
+            "additionalProperties": false,
+            "properties": { "color_temp": { "type": "integer", "minimum": 1500, "maximum": 9000 } }
+          }
+        }
+      }
+    },
+    "power_meter": {
+      "title": "Energy meter",
+      "permission": "view",
+      "risk": "low",
+      "attributes": {
+        "voltage": { "type": "number", "minimum": 0, "maximum": 500, "unit": "V" },
+        "current": { "type": "number", "minimum": 0, "maximum": 1000, "unit": "A" },
+        "power": { "type": "number", "minimum": -1000000, "maximum": 1000000, "unit": "W", "description": "Active power. Negative = export (bidirectional meters only)." },
+        "energy": { "type": "number", "minimum": 0, "unit": "kWh" },
+        "power_factor": { "type": "number", "minimum": 0, "maximum": 1 },
+        "frequency": { "type": "number", "minimum": 40, "maximum": 70, "unit": "Hz" }
+      },
+      "actions": {}
+    },
+    "contactor": {
+      "title": "Remote circuit contactor (not a breaker)",
+      "permission": "control_power",
+      "risk": "high",
+      "attributes": {
+        "commanded_closed": { "type": "boolean", "description": "What the controller drives the coil to. Not proof of power." },
+        "aux_contact_closed": { "type": "boolean", "description": "Auxiliary contact feedback. Only this confirms switching." }
+      },
+      "actions": {
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "open": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "aux_contact_closed"
+    },
+    "breaker": {
+      "title": "Smart circuit breaker (MCB/RCBO) in the electrical panel, remotely switched (ADR 0015)",
+      "permission": "control_power",
+      "risk": "high",
+      "attributes": {
+        "closed": { "type": "boolean", "description": "Main contacts closed, as reported by the breaker itself (position/aux contact). Only this confirms switching." },
+        "tripped": { "type": "boolean", "description": "Protection tripped (overcurrent / short circuit / residual current). Firmware refuses a remote close until the breaker is reset on site." }
+      },
+      "actions": {
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "open": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "closed",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "panel": { "type": "string", "minLength": 1, "maxLength": 40, "description": "Panel (shit) the breaker sits in. Default 'Asosiy shit'." },
+          "position": { "type": "integer", "minimum": 1, "maximum": 99, "description": "Number on the panel label; the app lines breakers up by it, left to right." },
+          "rating_a": { "type": "integer", "enum": [6, 10, 13, 16, 20, 25, 32, 40, 50, 63], "description": "Nominal current, A." },
+          "curve": { "enum": ["B", "C", "D"], "description": "Trip curve printed on the breaker (C16 = curve C, 16 A)." },
+          "poles": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Width in DIN modules (1P = 1 module)." }
+        }
+      },
+      "events": {
+        "tripped": { "severity": "critical", "description": "Protection tripped (firmware). The circuit has no power until the breaker is reset on site." },
+        "close_refused": { "severity": "warning", "description": "Remote close refused because the breaker is tripped (firmware, safety_rule)." }
+      }
+    },
+    "climate": {
+      "title": "Climate",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "power": { "type": "boolean" },
+        "current_temp": { "type": "number", "minimum": -60, "maximum": 100, "unit": "°C" },
+        "target_temp": { "type": "number", "minimum": 16, "maximum": 30, "unit": "°C" },
+        "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] },
+        "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] },
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" },
+        "running": {
+          "type": "boolean",
+          "description": "Unit really draws current (CT clamp on its supply). The only real feedback for IR units; confirms set_power."
+        }
+      },
+      "actions": {
+        "set_power": {
+          "params": { "type": "object", "required": ["power"], "additionalProperties": false, "properties": { "power": { "type": "boolean" } } }
+        },
+        "set_target_temp": {
+          "params": {
+            "type": "object", "required": ["target_temp"], "additionalProperties": false,
+            "properties": { "target_temp": { "type": "number", "minimum": 16, "maximum": 30 } }
+          }
+        },
+        "set_mode": {
+          "params": {
+            "type": "object", "required": ["mode"], "additionalProperties": false,
+            "properties": { "mode": { "type": "string", "enum": ["off", "cool", "heat", "dry", "fan", "auto"] } }
+          }
+        },
+        "set_fan": {
+          "params": {
+            "type": "object", "required": ["fan"], "additionalProperties": false,
+            "properties": { "fan": { "type": "string", "enum": ["auto", "low", "medium", "high"] } }
+          }
+        }
+      },
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "no_effect_after_s": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 7200,
+            "description": "Hub raises climate.no_effect when, after power on, room temperature has not moved toward the target within this time (default 900)."
+          }
+        }
+      },
+      "events": {
+        "no_effect": {
+          "severity": "warning",
+          "description": "Room temperature did not move toward the target (hub). A hint, never a confirmation."
+        }
+      }
+    },
+    "cover": {
+      "title": "Gate / door / shutter",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "position": { "type": "integer", "minimum": 0, "maximum": 100, "unit": "%" },
+        "state": { "type": "string", "enum": ["open", "closed", "opening", "closing", "stopped", "unknown"] },
+        "obstructed": {
+          "type": "boolean",
+          "description": "Photocell beam interrupted. Display only: stopping/reversing is done by the gate controller hardware; firmware additionally refuses 'close' while obstructed."
+        }
+      },
+      "actions": {
+        "open": { "params": { "type": "object", "additionalProperties": false } },
+        "close": { "params": { "type": "object", "additionalProperties": false } },
+        "stop": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "state",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "left_open_after_s": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "Hub raises cover.left_open when not closed for this long (default 600)."
+          }
+        }
+      },
+      "events": {
+        "left_open": { "severity": "warning", "description": "Not closed for longer than left_open_after_s (hub)." },
+        "obstructed": { "severity": "warning", "description": "Photocell interrupted (firmware)." },
+        "travel_timeout": {
+          "severity": "warning",
+          "description": "End reed not reached within max travel time (firmware)."
+        },
+        "sensor_conflict": {
+          "severity": "critical",
+          "description": "Open and closed reed both active: commands refused (firmware)."
+        }
+      }
+    },
+    "lock": {
+      "title": "Lock",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "locked": { "type": "boolean" }
+      },
+      "actions": {
+        "lock": { "params": { "type": "object", "additionalProperties": false } },
+        "unlock": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "locked"
+    },
+    "contact": {
+      "title": "Door/window sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "open": { "type": "boolean" } },
+      "actions": {}
+    },
+    "motion": {
+      "title": "Motion (PIR / radar)",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "detected": { "type": "boolean" } },
+      "actions": {}
+    },
+    "environment": {
+      "title": "Environment sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": {
+        "temperature": { "type": "number", "minimum": -60, "maximum": 100, "unit": "°C" },
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" },
+        "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {}
+    },
+    "leak": {
+      "title": "Water leak sensor",
+      "permission": "view",
+      "risk": "low",
+      "attributes": { "wet": { "type": "boolean" } },
+      "actions": {}
+    },
+    "valve": {
+      "title": "Irrigation valve / pump",
+      "permission": "control_basic",
+      "risk": "medium",
+      "attributes": {
+        "open": { "type": "boolean" },
+        "flow": { "type": "number", "minimum": 0, "unit": "L/min" },
+        "remaining_s": { "type": "integer", "minimum": 0, "unit": "s" }
+      },
+      "actions": {
+        "open": {
+          "params": {
+            "type": "object", "required": ["duration_s"], "additionalProperties": false,
+            "properties": { "duration_s": { "type": "integer", "minimum": 1, "maximum": 3600 } }
+          }
+        },
+        "close": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "open",
+      "events": {
+        "runtime_limit": { "severity": "info", "description": "Closed by firmware at max_runtime_s." },
+        "no_flow": {
+          "severity": "warning",
+          "description": "Open but no flow: closed by firmware (dry-run protection)."
+        },
+        "flow_while_closed": {
+          "severity": "critical",
+          "description": "Flow measured while the valve is closed (leak / stuck valve)."
+        },
+        "emergency_stop": {
+          "severity": "warning",
+          "description": "Physical emergency button pressed: valve closed by firmware."
+        }
+      }
+    },
+    "camera": {
+      "title": "Camera (metadata only, video stays at home)",
+      "permission": "camera_live",
+      "risk": "low",
+      "attributes": {
+        "stream_available": { "type": "boolean" },
+        "recording": { "type": "boolean" },
+        "disk_usage_pct": { "type": "number", "minimum": 0, "maximum": 100, "unit": "%" }
+      },
+      "actions": {}
+    },
+    "alarm": {
+      "title": "Security system (runs on the hub)",
+      "permission": "control_access",
+      "risk": "high",
+      "attributes": {
+        "state": {
+          "type": "string",
+          "enum": ["disarmed", "arming", "armed_away", "armed_home", "pending", "triggered"]
+        },
+        "alert_zone": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "device_key of the zone that caused pending/triggered; empty otherwise."
+        }
+      },
+      "actions": {
+        "arm_away": { "params": { "type": "object", "additionalProperties": false } },
+        "arm_home": { "params": { "type": "object", "additionalProperties": false } },
+        "disarm": { "params": { "type": "object", "additionalProperties": false } }
+      },
+      "confirm_attribute": "state",
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zones"],
+        "properties": {
+          "zones": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["device_key", "capability", "mode"],
+              "properties": {
+                "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+                "capability": { "enum": ["contact", "motion"] },
+                "mode": {
+                  "enum": ["entry", "instant"],
+                  "description": "entry: entry delay before triggering; instant: triggers at once."
+                },
+                "home": {
+                  "type": "boolean",
+                  "description": "Also active in armed_home (perimeter). Default true for contact, false for motion."
+                }
+              }
+            }
+          },
+          "sirens": {
+            "type": "array",
+            "maxItems": 8,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+            "description": "device_keys with a switch capability."
+          },
+          "exit_delay_s": { "type": "integer", "minimum": 0, "maximum": 300 },
+          "entry_delay_s": { "type": "integer", "minimum": 0, "maximum": 300 },
+          "siren_max_s": { "type": "integer", "minimum": 10, "maximum": 900 }
+        }
+      },
+      "events": {
+        "armed": { "severity": "info" },
+        "disarmed": { "severity": "info" },
+        "arm_refused": { "severity": "warning", "description": "A zone was open when arming." },
+        "entry_delay": { "severity": "warning" },
+        "triggered": { "severity": "critical" },
+        "sensor_offline": { "severity": "warning", "description": "A zone sensor went offline while armed." },
+        "siren_timeout": {
+          "severity": "info",
+          "description": "Siren stopped at siren_max_s; the alarm stays triggered until disarmed."
+        }
+      }
+    },
+    "remote": {
+      "title": "Universal IR remote (Tuya smart pult): buttons learned from the original remote (ADR 0016)",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "buttons": { "type": "array", "items": { "type": "string" }, "maxItems": 200,
+          "description": "Names of the buttons whose IR codes the hub holds. Changes only when a learn really captured a code." }
+      },
+      "actions": {
+        "press": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } },
+        "learn": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } },
+        "forget": { "params": { "type": "object", "required": ["button"], "additionalProperties": false,
+          "properties": { "button": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" } } } }
+      },
+      "config": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "layout": { "enum": ["tv", "ac", "other"], "description": "Which remote the app draws. Default 'other'." }
+        }
+      }
+    },
+    "media": {
+      "title": "TV / media device (Yandex Alisa cloud; native TV protocols later) (ADR 0016)",
+      "permission": "control_basic",
+      "risk": "low",
+      "attributes": {
+        "on": { "type": "boolean" },
+        "volume": { "type": "number", "minimum": 0, "maximum": 100 },
+        "muted": { "type": "boolean" },
+        "channel": { "type": "integer", "minimum": 0, "maximum": 9999 },
+        "input": { "type": "string", "maxLength": 40 }
+      },
+      "actions": {
+        "turn_on": { "params": { "type": "object", "additionalProperties": false } },
+        "turn_off": { "params": { "type": "object", "additionalProperties": false } },
+        "set_volume": { "params": { "type": "object", "required": ["volume"], "additionalProperties": false,
+          "properties": { "volume": { "type": "number", "minimum": 0, "maximum": 100 } } } },
+        "volume_up": { "params": { "type": "object", "additionalProperties": false } },
+        "volume_down": { "params": { "type": "object", "additionalProperties": false } },
+        "set_mute": { "params": { "type": "object", "required": ["muted"], "additionalProperties": false,
+          "properties": { "muted": { "type": "boolean" } } } },
+        "set_channel": { "params": { "type": "object", "required": ["channel"], "additionalProperties": false,
+          "properties": { "channel": { "type": "integer", "minimum": 0, "maximum": 9999 } } } },
+        "channel_up": { "params": { "type": "object", "additionalProperties": false } },
+        "channel_down": { "params": { "type": "object", "additionalProperties": false } }
+      }
+    }
+  }
+}

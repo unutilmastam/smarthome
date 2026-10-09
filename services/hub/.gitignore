@@ -1,0 +1,5 @@
+mosquitto/passwd
+*.sqlite3
+esphome/
+frigate/config.yml
+frigate/*.db

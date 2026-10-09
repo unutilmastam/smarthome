@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/state-report.schema.json",
+  "title": "Device state report, Hub -> Backend (POST /hub/report)",
+  "description": "States are keyed by device_key, then capability, then attribute. Each attribute value carries trust metadata (value.schema.json). Attributes the Hub knows nothing about are omitted, not invented.",
+  "type": "object",
+  "required": ["schema", "ts", "devices"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "ts": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "devices": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["device_key"],
+        "additionalProperties": false,
+        "properties": {
+          "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+          "availability": { "enum": ["online", "offline", "unknown"] },
+          "states": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+              "additionalProperties": { "$ref": "value.schema.json" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

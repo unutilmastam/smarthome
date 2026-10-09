@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/automation.schema.json",
+  "title": "Automation rule (ARCHITECTURE 11, ADR 0013) - executed by the hub",
+  "description": "Stored by the backend (validated against devices, contracts and loops), delivered to the hub with GET /hub/config. Values in state triggers/conditions are checked against the attribute schema in capabilities.json. Actions on high-risk capabilities are not allowed (a human with a PIN must do those).",
+  "type": "object",
+  "required": ["triggers", "actions"],
+  "additionalProperties": false,
+  "properties": {
+    "triggers": {
+      "type": "array", "minItems": 1, "maxItems": 10,
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/state_trigger" }, { "$ref": "#/$defs/time_trigger" }, { "$ref": "#/$defs/sun_trigger" }
+      ] }
+    },
+    "conditions": {
+      "type": "array", "maxItems": 10,
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/state_condition" }, { "$ref": "#/$defs/time_condition" },
+        { "$ref": "#/$defs/sun_condition" }, { "$ref": "#/$defs/security_condition" }
+      ] }
+    },
+    "actions": {
+      "type": "array", "minItems": 1, "maxItems": 10,
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/command_action" }, { "$ref": "#/$defs/delay_action" }, { "$ref": "#/$defs/notify_action" }
+      ] }
+    },
+    "cooldown_s": { "type": "integer", "minimum": 0, "maximum": 86400, "description": "Minimum time between two runs (default 60)." },
+    "max_runs_per_hour": { "type": "integer", "minimum": 1, "maximum": 120, "description": "Hard cap per rolling hour (default 20)." },
+    "manual_override_s": { "type": "integer", "minimum": 0, "maximum": 86400, "description": "After a person controls a device, this rule leaves it alone for this long (default 1800)." }
+  },
+  "$defs": {
+    "device_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 40 },
+    "hhmm": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+    "days": {
+      "type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true,
+      "items": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
+    },
+    "offset_min": { "type": "integer", "minimum": -180, "maximum": 180 },
+    "state_trigger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "device", "capability", "attribute", "to"],
+      "properties": {
+        "type": { "const": "state" },
+        "device": { "$ref": "#/$defs/device_key" },
+        "capability": { "$ref": "#/$defs/name" },
+        "attribute": { "$ref": "#/$defs/name" },
+        "to": { "description": "Fires when the REPORTED value changes to this value." },
+        "for_s": { "type": "integer", "minimum": 0, "maximum": 86400, "description": "Value must stay for this long (0 = immediately)." }
+      }
+    },
+    "time_trigger": {
+      "type": "object", "additionalProperties": false, "required": ["type", "at"],
+      "properties": { "type": { "const": "time" }, "at": { "$ref": "#/$defs/hhmm" }, "days": { "$ref": "#/$defs/days" } }
+    },
+    "sun_trigger": {
+      "type": "object", "additionalProperties": false, "required": ["type", "event"],
+      "properties": {
+        "type": { "const": "sun" }, "event": { "enum": ["sunrise", "sunset"] },
+        "offset_min": { "$ref": "#/$defs/offset_min" }, "days": { "$ref": "#/$defs/days" }
+      }
+    },
+    "state_condition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "device", "capability", "attribute", "is"],
+      "properties": {
+        "type": { "const": "state" },
+        "device": { "$ref": "#/$defs/device_key" },
+        "capability": { "$ref": "#/$defs/name" },
+        "attribute": { "$ref": "#/$defs/name" },
+        "is": { "description": "Latest REPORTED value equals this. Unknown/offline -> condition is false." }
+      }
+    },
+    "time_condition": {
+      "type": "object", "additionalProperties": false, "required": ["type", "after", "before"],
+      "properties": {
+        "type": { "const": "time" }, "after": { "$ref": "#/$defs/hhmm" }, "before": { "$ref": "#/$defs/hhmm" },
+        "days": { "$ref": "#/$defs/days" }
+      }
+    },
+    "sun_condition": {
+      "type": "object", "additionalProperties": false, "required": ["type", "is"],
+      "properties": {
+        "type": { "const": "sun" }, "is": { "enum": ["day", "night"] },
+        "offset_min": { "$ref": "#/$defs/offset_min" }
+      }
+    },
+    "security_condition": {
+      "type": "object", "additionalProperties": false, "required": ["type", "is"],
+      "properties": {
+        "type": { "const": "security_mode" },
+        "is": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "enum": ["disarmed", "arming", "armed_away", "armed_home", "pending", "triggered"] }
+        }
+      }
+    },
+    "command_action": {
+      "type": "object", "additionalProperties": false, "required": ["type", "device", "capability", "action"],
+      "properties": {
+        "type": { "const": "command" },
+        "device": { "$ref": "#/$defs/device_key" },
+        "capability": { "$ref": "#/$defs/name" },
+        "action": { "$ref": "#/$defs/name" },
+        "params": { "type": "object" },
+        "auto_off_after_s": {
+          "type": "integer", "minimum": 5, "maximum": 86400,
+          "description": "Only for switch.turn_on: the hub sends turn_off after this time."
+        }
+      }
+    },
+    "delay_action": {
+      "type": "object", "additionalProperties": false, "required": ["type", "seconds"],
+      "properties": { "type": { "const": "delay" }, "seconds": { "type": "integer", "minimum": 1, "maximum": 3600 } }
+    },
+    "notify_action": {
+      "type": "object", "additionalProperties": false, "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "notify" },
+        "severity": { "enum": ["info", "warning", "critical"] },
+        "text": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    }
+  }
+}

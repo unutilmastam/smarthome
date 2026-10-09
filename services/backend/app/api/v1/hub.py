@@ -1,0 +1,183 @@
+"""Hub-facing API (hub token auth). The Hub always connects outbound."""
+
+import json
+import logging
+from functools import lru_cache
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, Query
+from pydantic import Field
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_contracts, get_db
+from app.api.hub_auth import get_hub
+from app.core.config import Settings, get_settings
+from app.core.contracts import Contracts
+from app.core.secretbox import SecretBoxError, open_ as open_secret
+from app.core.errors import validation_error
+from app.core.responses import ok
+from app.db.types import utcnow
+from app.models import Automation, Device, Home, Hub
+from app.schemas.common import Model
+from app.services.commands import apply_ack, claim_for_hub, expire_due
+from app.services.device_view import iso
+from app.services.automations import hub_view as automations_for_hub
+from app.services.automation_runs import ingest as ingest_runs
+from app.services.events import ingest as ingest_events
+from app.services.notifications import clean_health, dispatch_now
+from app.services.hub_reports import apply_report
+from app.services.telemetry import ingest as ingest_telemetry
+
+log = logging.getLogger("app.hub")
+router = APIRouter(prefix="/hub", tags=["hub"])
+
+
+@lru_cache(maxsize=4)
+def _validators(schemas_dir: str):
+    from pathlib import Path
+    schemas = {p.name: json.loads(p.read_text(encoding="utf-8"))
+               for p in Path(schemas_dir).glob("*.schema.json")}
+    registry = Registry().with_resources(
+        [(s["$id"], Resource.from_contents(s)) for s in schemas.values()]
+        + [(n, Resource.from_contents(s)) for n, s in schemas.items()]
+    )
+    fc = Draft202012Validator.FORMAT_CHECKER
+    return {n: Draft202012Validator(s, registry=registry, format_checker=fc)
+            for n, s in schemas.items()}
+
+
+def _validate(contracts: Contracts, name: str, doc) -> None:
+    v = _validators(str(contracts.dir / "schemas"))[name]
+    errors = sorted(v.iter_errors(doc), key=lambda e: list(e.absolute_path))
+    if errors:
+        raise validation_error(
+            f"Document does not match {name}",
+            [{"path": "/".join(str(x) for x in e.absolute_path), "msg": e.message}
+             for e in errors[:20]],
+        )
+
+
+class HeartbeatIn(Model):
+    version: Optional[str] = None
+    hub_time: Optional[str] = None
+    health: Optional[dict] = None
+    # Where the user's phone can reach the hub (never used by the cloud itself).
+    tailnet_host: Optional[str] = Field(default=None, max_length=253,
+                                        pattern=r"^[A-Za-z0-9.\-]+$")
+    lan_host: Optional[str] = Field(default=None, max_length=253, pattern=r"^[A-Za-z0-9.\-]+$")
+
+
+@router.post("/heartbeat")
+def heartbeat(body: HeartbeatIn, hub: Hub = Depends(get_hub), db: Session = Depends(get_db)):
+    now = utcnow()
+    hub.last_seen = now
+    if body.version and body.version != hub.version:
+        hub.version = body.version[:40]
+    if body.tailnet_host is not None:
+        hub.tailnet_host = body.tailnet_host or None
+    if body.lan_host is not None:
+        hub.lan_host = body.lan_host or None
+    if body.health is not None:
+        hub.health = clean_health(body.health)
+    db.commit()
+    return ok({"server_time": iso(now), "hub_id": str(hub.id)})
+
+
+@router.get("/commands")
+def get_commands(limit: int = Query(20, ge=1, le=100), hub: Hub = Depends(get_hub),
+                 db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                 contracts: Contracts = Depends(get_contracts)):
+    expire_due(db, settings, contracts, home_id=hub.home_id)
+    cmds = claim_for_hub(db, hub, limit)
+    return ok([c.envelope for c in cmds], {"count": len(cmds), "server_time": iso(utcnow())})
+
+
+@router.post("/acks")
+def post_acks(body: dict = Body(...), hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
+              contracts: Contracts = Depends(get_contracts)):
+    acks = body.get("acks")
+    if not isinstance(acks, list) or not 1 <= len(acks) <= 200:
+        raise validation_error("acks must be a list of 1..200 items")
+    for a in acks:
+        _validate(contracts, "ack.schema.json", a)
+    results = [apply_ack(db, hub, a) for a in acks]
+    db.commit()
+    return ok({"results": results})
+
+
+@router.post("/report")
+def post_report(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
+    _validate(contracts, "state-report.schema.json", body)
+    return ok(apply_report(db, hub, contracts, body))
+
+
+def _secret(d: Device, settings: Settings) -> Optional[str]:
+    """Only the home's own hub ever gets a device secret (ADR 0016), and only here."""
+    if not d.secret_enc:
+        return None
+    try:
+        return open_secret(settings.signing_master_key, d.secret_enc, str(d.id))
+    except SecretBoxError:
+        log.error("device %s: sealed secret does not open", d.key)
+        return None
+
+
+@router.get("/config")
+def get_config(hub: Hub = Depends(get_hub), db: Session = Depends(get_db),
+               contracts: Contracts = Depends(get_contracts), settings: Settings = Depends(get_settings)):
+    home = db.get(Home, hub.home_id)
+    devices = db.scalars(select(Device).where(Device.home_id == hub.home_id)
+                         .order_by(Device.key)).all()
+    return ok({
+        "home": {"id": str(home.id), "name": home.name, "timezone": home.timezone,
+                 "latitude": home.latitude, "longitude": home.longitude},
+        "hub_id": str(hub.id),
+        "contracts_version": contracts.registry.get("version"),
+        "devices": [
+            {"id": str(d.id), "key": d.key, "name": d.name, "adapter": d.adapter,
+             "protocol": d.protocol, "model": d.model, "enabled": d.enabled,
+             "fail_safe_state": d.fail_safe_state, "unsupported": d.unsupported or [],
+             "capabilities": {c.capability: c.config_json or {} for c in d.capabilities},
+             **({"connection": d.connection, "secret": _secret(d, settings)} if d.connection else {})}
+            for d in devices
+        ],
+        "automations": automations_for_hub(db.scalars(
+            select(Automation).where(Automation.home_id == hub.home_id).order_by(Automation.name))),
+        "server_time": iso(utcnow()),
+    })
+
+
+
+
+@router.post("/telemetry:batch")
+def post_telemetry(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                   db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts)):
+    _validate(contracts, "telemetry-batch.schema.json", body)
+    return ok(ingest_telemetry(db, hub, contracts, body))
+
+
+@router.post("/events")
+def post_events(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                db: Session = Depends(get_db), contracts: Contracts = Depends(get_contracts),
+                settings: Settings = Depends(get_settings)):
+    _validate(contracts, "hub-events.schema.json", body)
+    created: list = []
+    result = ingest_events(db, hub, contracts, body, created)
+    dispatch_now(db, settings, created)   # alarms reach phones now, not at the next cron minute
+    return ok(result)
+
+
+@router.post("/automation-runs")
+def post_automation_runs(body: dict = Body(...), hub: Hub = Depends(get_hub),
+                         db: Session = Depends(get_db),
+                         contracts: Contracts = Depends(get_contracts),
+                         settings: Settings = Depends(get_settings)):
+    _validate(contracts, "hub-automation-runs.schema.json", body)
+    created: list = []
+    result = ingest_runs(db, hub, body, created)
+    dispatch_now(db, settings, created)
+    return ok(result)

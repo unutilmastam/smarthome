@@ -1,0 +1,8 @@
+# Installed AUTOMATICALLY by deploy.sh on every deploy (lines marked "# smarthome-managed").
+# Listed here for reference only:
+#   * * * * *   python -m app.jobs.expire_due     (every minute; commands also expire on hub polls)
+#   * * * * *   python -m app.jobs.notify         (every minute: hub/device watchdog, reminders, Telegram/Push retries)
+#   7 * * * *   python -m app.jobs.energy         (hourly 1m->1h roll-up and daily kWh)
+#   17 3 * * *  python -m app.jobs.retention      (daily cleanup)
+#   41 3 * * *  sh backup.sh                      (daily pg_dump, 14 days, ~/sh-deploy/daily)
+# Pre-deploy dumps (last 10) are separate: ~/sh-deploy/backups. Restore: restore.sh (docs/runbooks/backup-restore.md).

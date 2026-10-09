@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/hub-automation-runs.schema.json",
+  "title": "Hub -> Backend automation run history (POST /api/v1/hub/automation-runs, ADR 0013)",
+  "description": "One record per run the hub started (or refused because of max_runs_per_hour / manual override). 'id' is set by the hub, so a retried batch is idempotent.",
+  "type": "object",
+  "required": ["schema", "runs"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "runs": {
+      "type": "array", "minItems": 1, "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": ["id", "automation_id", "version", "ts", "trigger", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "automation_id": { "type": "string", "format": "uuid" },
+          "version": { "type": "integer", "minimum": 1 },
+          "ts": { "type": "string", "format": "date-time", "pattern": "Z$" },
+          "trigger": { "type": "string", "maxLength": 160 },
+          "result": { "enum": ["ok", "partial", "failed", "skipped"] },
+          "reason": { "type": "string", "maxLength": 64 },
+          "actions": {
+            "type": "array", "maxItems": 12,
+            "items": {
+              "type": "object", "required": ["type", "outcome"], "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["command", "delay", "notify", "auto_off"] },
+                "device": { "type": "string", "maxLength": 64 },
+                "action": { "type": "string", "maxLength": 40 },
+                "outcome": { "type": "string", "maxLength": 48 },
+                "severity": { "enum": ["info", "warning", "critical"] },
+                "text": { "type": "string", "maxLength": 200 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

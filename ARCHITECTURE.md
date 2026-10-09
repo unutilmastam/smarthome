@@ -121,9 +121,9 @@
 
 | Qatlam | Tanlov |
 |---|---|
-| Backend (cloud) | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, a2wsgi |
+| Backend (cloud) | Python 3.10+ (3.10 bilan mos; hosting versiyasi tasdiqlanguncha), FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, a2wsgi |
 | DB (cloud) | PostgreSQL (cPanel) |
-| Gateway / automation (hub) | Python 3.11+, asyncio, aiomqtt, Pydantic, SQLite |
+| Gateway / automation (hub) | Python 3.10+, asyncio, aiomqtt, Pydantic, SQLite |
 | Frontend | React 18 + TypeScript + Vite, TanStack Query, Zustand, i18next (uz → ru, en), PWA (vite-plugin-pwa) |
 | Real-time (frontend) | mqtt.js (WSS), fallback — polling |
 | Video | Frigate + go2rtc (WebRTC), Tailscale |
@@ -153,11 +153,12 @@ environment   : temperature, humidity, soil_moisture
 leak          : wet/dry
 valve         : open/closed + max_runtime  (sug'orish)
 camera        : stream_available, recording, disk_usage
+contactor     : commanded_closed, aux_contact_closed  (liniya o'chirish; tasdiq — yordamchi kontakt)
 ```
 
 Yangi qurilma qo'shish = adapter + mavjud capability'lardan foydalanish. UI capability'ga qarab avtomatik boshqaruv elementini chizadi.
 
-**To'liq spetsifikatsiya:** `docs/spec/capabilities.json` — atributlar, birliklar, harakatlar (parametrlar JSON Schema), ruxsat, xavf darajasi, `confirm_attribute`. Faza 1 da `packages/contracts/` ga ko'chiriladi va yagona manbaga aylanadi.
+**To'liq spetsifikatsiya:** `packages/contracts/capabilities.json` — atributlar, birliklar, harakatlar (parametrlar JSON Schema), ruxsat, xavf darajasi, `confirm_attribute`. Yagona manba (Faza 1 da `docs/spec/` dan ko'chirildi).
 
 Qurilma ikki identifikatorga ega: `id` (UUID, API uchun) va `key` (`garden_lights` kabi, uy ichida yagona — MQTT va Hub uchun). Har bir qurilma `unsupported` atributlar ro'yxatiga ega: hisoblagich o'lchamaydigan narsa `not_supported` bo'lib ko'rinadi.
 
@@ -187,7 +188,8 @@ requested → signed → sent → acked → confirmed
 
 ### 4.4 Buyruq imzosi (Backend → Hub)
 ```
-payload = {command_id, device_id, action, params, issued_at, expires_at, issued_by}
+payload = {command_id, device_id, device_key, capability, action, params,
+           issued_at, expires_at, issued_by: {user_id, role}}     -- ADR 0007
 home_signing_key = HMAC-SHA256(SIGNING_MASTER_KEY, "home-signing:" + home_id)
 signature        = HMAC-SHA256(home_signing_key, canonical_json(payload))
 canonical_json   = UTF-8, kalitlar tartiblangan, separators (',', ':'), bo'sh joysiz
@@ -200,14 +202,16 @@ Hub tekshiradi: imzo to'g'ri, muddati o'tmagan, `command_id` avval bajarilmagan,
 
 ## 5. MQTT topiklari
 
-**Lokal (Hub ↔ ESP32):**
+**Lokal (Hub ↔ ESP32):** (`{device_key}` — qurilmaning uy ichidagi `key` i; ESP32 MQTT login'i ham shu)
 ```
-home/{device_id}/state          (retained)  — joriy holat
-home/{device_id}/telemetry                  — o'lchovlar
-home/{device_id}/availability   (retained, LWT) — online/offline
-home/{device_id}/cmd                        — buyruq (faqat gateway yozadi)
-home/{device_id}/ack                        — buyruq natijasi
+home/{device_key}/state          (retained)  — qurilmaning TO'LIQ joriy holati (retained bo'lgani uchun qisman xabar boshqa capability'larni o'chiradi)
+home/{device_key}/telemetry                  — o'lchovlar (qisman bo'lishi mumkin)
+home/{device_key}/availability   (retained, LWT) — online/offline
+home/{device_key}/cmd                        — buyruq (faqat gateway yozadi)
+home/{device_key}/ack                        — buyruq natijasi
+home/{device_key}/event                      — bir martalik voqea (ADR 0012): "cover.left_open", "alarm.triggered", ...
 ```
+Xabar formatlari: `packages/contracts/schemas/local-mqtt.schema.json`. Qurilma xom qiymat yuboradi; `source/quality/ts` ni gateway qo'shadi.
 
 **Cloud broker (Hub ↔ Backend ↔ PWA):**
 ```
@@ -241,9 +245,10 @@ sh/v1/{home_id}/hub/health                    (retained)
 ```
 users, roles, user_home_roles, sessions, password_resets
 homes (timezone, lat/lon — quyosh chiqishi/botishi uchun)
-floors, rooms (type: indoor/outdoor)
+floors, rooms (type: indoor/outdoor, icon)
 hubs (home_id, secret_hash, last_seen, version)
-devices (room_id, adapter, protocol, model, fail_safe_state, enabled)
+devices (room_id, adapter, protocol, model, icon, fail_safe_state, enabled)
+-- icon: faqat UI uchun ko'rinish kaliti (masalan "bulb", "fan"); holatga ta'sir qilmaydi
 device_capabilities (device_id, capability, config_json)
 device_state (device_id, capability, value_json, source, quality, ts)   -- joriy
 commands (id, device_id, action, params, status, requested_by, created_at, expires_at)
@@ -251,12 +256,14 @@ command_results (command_id, status, detail, ts)
 telemetry_1m   (device_id, metric, ts, avg, min, max)   -- 30 kun
 telemetry_1h   (device_id, metric, ts, avg, min, max)   -- 2 yil
 energy_daily   (device_id, date, kwh, cost)              -- doimiy
-automations (json definition, version, enabled)
-automation_runs (automation_id, trigger, result, error, ts)
+automations (home_id, name, definition json, version, enabled)        -- ADR 0013
+automation_runs (automation_id, version, trigger, result, reason, actions, ts)
 schedules
-notifications (severity, source, title, body, acked_by, acked_at)
-push_subscriptions, telegram_links
+notifications (home_id, severity, source, kind, title, body, data, ts, dedupe_key, acked_by, acked_at, reminded_at) -- 180 kun (ADR 0014)
+notification_deliveries (notification_id, user_id, channel, target, status, attempts, next_attempt_at)
+push_subscriptions (user_id, endpoint, p256dh, auth), telegram_links (user_id, chat_id), telegram_link_codes (sha256, 10 daq)
 cameras (hub_id, name, frigate_name, room_id)   -- VIDEO YO'Q
+events (home_id, device_id, type, severity, ts, data)   -- voqealar tasmasi, 180 kun (ADR 0012)
 audit_log (actor, action, target, ip, ts, details)
 ```
 - Hammasi UTC. Indekslar: `(device_id, ts)`.
@@ -273,9 +280,13 @@ users/roles:   GET/POST/PATCH /users, /homes/{id}/members
 homes/rooms:   /homes, /homes/{id}/floors, /rooms
 devices:       /devices (filter: room, type, status), /devices/{id}, /devices/{id}/history
 commands:      POST /commands, GET /commands/{id}, POST /groups/{id}/commands
-automations:   /automations, /automations/{id}/runs, POST /automations/validate
+automations:   /homes/{id}/automations, /automations/{id}, /automations/{id}/runs, POST /homes/{id}/automations:validate
 energy:        /energy/summary?period=, /energy/circuits/{id}
-notifications: /notifications, POST /notifications/{id}/ack, /push/subscribe
+events:        GET /homes/{id}/events (severity, capability, device_id, before) — ADR 0012
+notifications: GET /homes/{id}/notifications, POST /notifications/{id}/ack, /notifications/{id}/ack-token (Push tugmasi),
+               GET /notifications/settings, POST /notifications/telegram/link, /notifications/push/subscribe|unsubscribe,
+               GET/PUT /homes/{id}/notification-prefs, POST /homes/{id}/notifications:test — ADR 0014
+telegram:      POST /telegram/webhook (faqat Telegram, maxfiy sarlavha bilan)
 cameras:       /cameras (metadata), GET /cameras/{id}/access  -> Tailscale/lokal URL
 health:        /health, /homes/{id}/health
 audit:         /audit
@@ -284,11 +295,12 @@ hub (Hub uchun, hub token bilan):
                GET  /hub/commands    (navbatdagi imzolangan buyruqlar; bir marta beriladi → status 'sent')
                POST /hub/acks        (buyruq natijalari)
                POST /hub/report      (holatlar + availability, device_key bo'yicha)
-               POST /hub/telemetry:batch, /hub/events
+               POST /hub/telemetry:batch, /hub/events (hub-events.schema.json, id bo'yicha idempotent)
                GET  /hub/config      (qurilmalar, avtomatikalar — sinxron)
 ```
 - Javob formati: `{ "data": ..., "error": null, "meta": {...} }`.
-- Xato kodlari: `AUTH_REQUIRED, FORBIDDEN, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR`.
+- Xato kodlari: `AUTH_REQUIRED, INVALID_CREDENTIALS, FORBIDDEN, NOT_FOUND, CONFLICT, DEVICE_OFFLINE, CAPABILITY_NOT_SUPPORTED, COMMAND_EXPIRED, RATE_LIMITED, VALIDATION_ERROR, HUB_UNREACHABLE, PIN_REQUIRED, PIN_INVALID, DEVICE_DISABLED, NOT_CONFIGURED` (`NOT_CONFIGURED` — serverda kanal sozlanmagan, ADR 0014).
+- A'zo bo'lmagan uyning resurslari → `404 NOT_FOUND` (403 emas, ID taxmin qilinmasin). A'zo, lekin ruxsat yo'q → `403 FORBIDDEN`.
 - OpenAPI `/api/v1/docs` (productionda faqat admin).
 
 ---
@@ -310,7 +322,7 @@ Yuqori xavfli harakatlar (`risk: high` — darvoza, qulf, kontaktor) — buyruqd
 
 **Mehmon:** qurilma/vaqt bo'yicha ruxsatlar (grants) alohida faza. U tayyor bo'lmaguncha mehmon faqat ko'radi — "tayyor" deb ko'rsatilmaydi.
 
-Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live, camera_archive, configure, manage_users, view_audit`. Har bir capability qaysi ruxsatni talab qilishi `docs/spec/capabilities.json` da.
+Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live, camera_archive, configure, manage_users, view_audit`. Har bir capability qaysi ruxsatni talab qilishi `packages/contracts/capabilities.json` da.
 
 ---
 
@@ -321,10 +333,10 @@ Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live
 | Chiroq | ESP32 + rele / Sonoff (ESPHome), dimmer uchun MOSFET/triac modul | Rele holati + ixtiyoriy tok |
 | Elektr panel | SDM120 (1 faza) / SDM630 (3 faza) Modbus RTU → RS485 → ESP32 yoki Hub USB; arzon variant PZEM-004T v3 | Faqat hisoblagich ko'rsatgani. **Avtomat (breaker) holatini dastur bilmaydi** — faqat yordamchi kontakt bo'lsa |
 | Liniya o'chirish | Kontaktor (DIN) + yordamchi kontakt (NO/NC) holat uchun | Yordamchi kontakt |
-| Darvoza | Mavjud darvoza blokining "start/open/close" kirishi + rele; ochiq/yopiq gerkon datchiklari | Gerkon. **Fotoelement apparatda qoladi** |
-| Konditsioner | ESP32 + IR LED (ESPHome climate_ir) yoki ishlab chiqaruvchi API | `assumed` + xona harorati/tok |
-| Xavfsizlik | PIR, LD2410 radar, gerkonlar, sirena | Datchik o'zi |
-| Sug'orish | 24V AC klapanlar + rele, tuproq namligi (sig'imli), oqim datchigi | Oqim datchigi; ESP32'da `max_runtime` majburiy |
+| Darvoza | Mavjud darvoza blokining "start/open/close" kirishi + rele; ochiq/yopiq gerkon datchiklari | Gerkon. **Fotoelement apparatda qoladi** (`cover.obstructed` faqat ko'rsatiladi; yopiq/ochiq gerkon ziddiyati → `unknown`) — `devices/esphome/gate.yaml` |
+| Konditsioner | ESP32 + IR LED (ESPHome climate_ir) yoki ishlab chiqaruvchi API | `assumed` + xona harorati; **tok datchigi (`climate.running`) bo'lsa — `confirmed`** — `ir-climate.yaml` |
+| Xavfsizlik | PIR, LD2410 radar, gerkonlar, sirena | Datchik o'zi. Signalizatsiya Hub'da ishlaydi (`alarm`, ADR 0012); sirena vaqti proshivkada ham cheklangan — `security-sensor.yaml`, `siren.yaml` |
+| Sug'orish | 24V AC klapanlar + rele, tuproq namligi (sig'imli), oqim datchigi | Oqim datchigi (`open` + `flow > 0`); ESP32'da `max_runtime`, quruq ishlash himoyasi, favqulodda tugma — `irrigation-valve.yaml` |
 | Suv oqishi | Leak datchiklar + elektromagnit klapan | Datchik |
 | Kamera | ONVIF/RTSP IP kameralar (PoE), alohida VLAN, internetga chiqish yopiq | Frigate holati |
 | Tarmoq | Router (OpenWrt/MikroTik bo'lsa API), ping monitoring | Ping/API |
@@ -335,34 +347,25 @@ Ruxsat nomlari: `view, control_basic, control_access, control_power, camera_live
 
 ## 11. Avtomatika (Hub'da bajariladi)
 
-```yaml
-id: garden_night_motion
-enabled: true
-trigger:
-  - type: state
-    device: garden_radar
-    capability: motion
-    to: detected
-conditions:
-  - type: sun
-    after: sunset
-  - type: security_mode
-    is: armed
-actions:
-  - type: command
-    device: garden_lights
-    action: turn_on
-    auto_off_after: 300        # soniya
-  - type: notify
-    severity: warning
-    text: "Bog'da harakat aniqlandi"
-cooldown: 120
-max_runs_per_hour: 20
+Format: `packages/contracts/schemas/automation.schema.json` (ADR 0013). Misol (UI vizual muharriri shu JSON'ni yaratadi):
+```json
+{
+  "triggers": [{ "type": "state", "device": "garden_radar", "capability": "motion",
+                 "attribute": "detected", "to": true }],
+  "conditions": [{ "type": "sun", "is": "night" },
+                 { "type": "security_mode", "is": ["armed_away", "armed_home"] }],
+  "actions": [{ "type": "command", "device": "garden_lights", "capability": "switch",
+                "action": "turn_on", "auto_off_after_s": 300 },
+              { "type": "notify", "severity": "warning", "text": "Bog'da harakat aniqlandi" }],
+  "cooldown_s": 120,
+  "max_runs_per_hour": 20
+}
 ```
-- Validatsiya: mavjud qurilma va capability, sikl (A → B → A) aniqlanadi va rad etiladi.
-- Har bir ishga tushish `automation_runs` ga yoziladi.
-- Qo'lda boshqaruv (manual override) avtomatikani belgilangan vaqtga to'xtatadi.
-- Vizual muharrir UI'da shu YAML/JSON'ni yaratadi.
+- Validatsiya (backend): mavjud qurilma, capability, atribut va qiymat (shartnoma sxemasi bo'yicha); harakat parametrlari; **`risk: high` harakatlar taqiqlangan**; sikl (A → B → A, o'ziga ham) rad etiladi; `sun` uchun uy koordinatalari majburiy.
+- Trigger va shartlar faqat qurilmadan kelgan (`reported`) qiymatlarga qaraydi. Qiymat noma'lum yoki qurilma oflayn bo'lsa, shart bajarilmagan hisoblanadi.
+- Har bir ishga tushish `automation_runs` ga yoziladi (Hub outbox → `POST /hub/automation-runs`).
+- Qo'lda boshqaruv (manual override) shu qurilmaga avtomatika ta'sirini `manual_override_s` (standart 30 daq) ga to'xtatadi.
+- `cooldown_s` (standart 60) va `max_runs_per_hour` (standart 20) Hub'da majburiy.
 
 ---
 
@@ -373,11 +376,11 @@ max_runs_per_hour: 20
 | Internet uzildi | Hub, avtomatika, kamera yozuvi ishlashda davom etadi. Telemetriya SQLite'da to'planadi. Uyda PWA `hub.local` orqali ishlaydi |
 | Internet qaytdi | Hub buferni yuboradi, holatlarni qayta e'lon qiladi, muddati o'tgan buyruqlarni bajarmaydi |
 | Svet o'chdi, qaytdi | Har bir rele `restore_mode` bo'yicha (standart: OFF; chiroqlar sozlanadi). Nasos — har doim OFF |
-| ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin) |
-| Lokal broker yiqildi | Docker `restart: always`, Hub salomatligi `degraded` |
-| Cloud broker yo'q | Backend buyruqni `failed: hub_unreachable` qiladi, PWA aniq xabar ko'rsatadi |
-| HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ogohlantirish |
-| Hub o'zi o'chdi | Cloud `hubs.last_seen` > 3 daq → kritik bildirishnoma (Telegram) |
+| ESP32 uzildi | LWT → `offline`, UI'da kulrang, bildirishnoma (5 daqiqadan keyin; Hub o'zi aloqasiz bo'lsa — alohida xabar yo'q, ADR 0014) |
+| Lokal broker yiqildi | Docker `restart: always`. Hub heartbeat'da `mqtt_connected=false` → 2 daqiqadan keyin ⚠️ bildirishnoma, tiklanganda xabar (Faza 14) |
+| Cloud broker yo'q | Buyruqlar HTTPS polling orqali davom etadi (ADR 0005). Hub ham yetib bo'lmasa (`last_seen` eskirgan) — `503 HUB_UNREACHABLE`, buyruq yaratilmaydi, PWA aniq xabar ko'rsatadi |
+| HDD to'ldi | Frigate eski yozuvni o'chiradi; 85% da ⚠️ bildirishnoma. Hub tizim diski ≥ 90% → ⚠️ (outbox xavfi). Docker log'lari 3×10 MB bilan cheklangan (Faza 14) |
+| Hub o'zi o'chdi | Cloud cron (har daqiqa): `hubs.last_seen` > 150 s → kritik bildirishnoma (Telegram + Push) — 3 daqiqa ichida; qaytganda "Hub qayta ulandi" (ADR 0014) |
 
 ---
 
@@ -387,7 +390,7 @@ max_runs_per_hour: 20
 - Parollar: Argon2id. Access token 15 daq, refresh token 30 kun (rotatsiya, bekor qilish mumkin, `HttpOnly` cookie).
 - Login: rate limit (IP + akkaunt), 5 xatodan keyin kechikish.
 - Sirlar: `.env` (gitda yo'q), GitHub Actions Secrets. Repo'da faqat `.env.example`.
-- Hub sirlari: `home_secret` faqat Hub va Backend'da.
+- Hub sirlari: `hub_token` (DB'da faqat SHA-256) va `signing_key_hex` (DB'da saqlanmaydi, master kalitdan hosil qilinadi — 4.4) faqat Hub `.env` ida.
 - Kameralar alohida VLAN'da, internetga chiqishi bloklangan, RTSP portlari tashqariga ochilmagan.
 - Router'da port forwarding **yo'q**. Masofaviy kirish faqat Tailscale.
 - ESPHome: API shifrlash kaliti + OTA paroli har qurilmada alohida.

@@ -1,0 +1,239 @@
+name: test
+
+on:
+  push:
+    branches-ignore: [main]   # main is tested by deploy-cloud.yml (which calls this file)
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smarthome
+          POSTGRES_PASSWORD: smarthome
+          POSTGRES_DB: smarthome_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U smarthome"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ENV: test
+      TEST_POSTGRES_URL: postgresql+psycopg://smarthome:smarthome@localhost:5432/smarthome_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            services/backend/requirements*.txt
+            packages/contracts/requirements-test.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packages/contracts/requirements-test.txt
+          pip install -r services/backend/requirements-dev.txt
+      - name: Contracts tests
+        run: python -m pytest packages/contracts -q
+      - name: Backend tests
+        working-directory: services/backend
+        run: python -m pytest -q
+
+  migrations:
+    name: migrations (expand-only, clean PostgreSQL, deploy script)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: |
+          python -m pip install -r services/backend/requirements-dev.txt
+          (cd apps/web && npm ci && npx vite build)
+      - name: Expand-only rule (ADR 0011)
+        working-directory: services/backend
+        run: python scripts/check_migrations.py
+      - name: alembic upgrade head on a clean PostgreSQL
+        working-directory: services/backend
+        run: |
+          psql -h localhost -U postgres -c "CREATE DATABASE clean_db"
+          ENV=development DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/clean_db \
+            python -m alembic upgrade head
+      - name: deploy.sh scenarios (backup, migrate, health, automatic rollback)
+        env:
+          TEST_POSTGRES_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          python -m pip install pytest
+          python -m pytest -q infra/cpanel/tests
+
+  security:
+    name: security (pip-audit, npm audit, gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # gitleaks scans the whole history
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: pip-audit (pinned backend + hub requirements)
+        run: |
+          python -m pip install -q pip-audit==2.10.1
+          for r in services/backend/requirements-dev.txt services/hub/requirements-dev.txt; do
+            pip-audit -r "$r" --progress-spinner off
+          done
+      - name: npm audit (high and critical fail the build)
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+      - name: gitleaks (history + working tree; reviewed false positives in .gitleaksignore)
+        run: |
+          curl -sSL -o /tmp/gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          echo "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  /tmp/gl.tgz" | sha256sum -c -
+          tar -xzf /tmp/gl.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --exit-code 1 .
+          /tmp/gitleaks dir --redact --exit-code 1 .
+
+  hub:
+    name: hub ${{ matrix.python }} (gateway + simulator + mosquitto)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    env:
+      ENV: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            services/hub/requirements*.txt
+            services/backend/requirements*.txt
+      - name: Install mosquitto
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mosquitto mosquitto-clients
+          sudo systemctl stop mosquitto || true
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/backend/requirements.txt -r services/hub/requirements-dev.txt
+      - name: Hub tests (unit, broker ACL, full chain [SIM])
+        working-directory: services/hub
+        run: python -m pytest -q
+      - name: docker compose config
+        working-directory: services/hub
+        run: |
+          cp .env.example .env && touch mosquitto/passwd
+          HUB_LAN_IP=192.168.1.10 SIM_DEVICE_PASSWORD=ci ESPHOME_PASSWORD=ci docker compose --profile sim config -q
+
+  web:
+    name: web (typecheck, unit, build, e2e [SIM])
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          npm ci
+          sudo apt-get update -q && sudo apt-get install -y -q mosquitto
+          sudo systemctl stop mosquitto || true
+          python -m pip install -r ../../services/backend/requirements-dev.txt -r ../../services/hub/requirements.txt
+          npx playwright install --with-deps chromium
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Unit tests (Vitest)
+        run: npx vitest run
+      - name: Build
+        run: npx vite build
+      - name: Release has no secrets and no video (ADR 0006)
+        working-directory: .
+        run: |
+          sh infra/cpanel/build_release.sh /tmp/release
+          cd services/backend
+          export ENV=development DATABASE_URL=sqlite:////tmp/nv.db
+          python -m alembic upgrade head
+          python -m app.jobs.no_video_check /tmp/release
+      - name: E2E (Playwright, phone + iPad, full stack [SIM])
+        run: npx playwright test
+        env:
+          PYTHON: python
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: playwright-traces
+          path: apps/web/test-results
+
+  firmware:
+    name: firmware (esphome config + compile)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: devices/esphome
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('devices/esphome/**/*.yaml') }}
+          restore-keys: pio-
+      - name: Install ESPHome
+        run: python -m pip install esphome==2026.9.1
+      - name: Dummy secrets (CI only)
+        run: |
+          KEY=$(python -c "import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())")
+          sed "s#^api_encryption_key: .*#api_encryption_key: \"$KEY\"#" secrets.example.yaml > secrets.yaml
+      - name: Validate and compile every device
+        run: |
+          for f in *.yaml; do
+            case "$f" in secrets*.yaml) continue;; esac
+            esphome config "$f" > /dev/null
+            esphome compile "$f"
+          done

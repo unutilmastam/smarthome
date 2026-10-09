@@ -1,0 +1,141 @@
+name: deploy-cloud
+
+# Automatic deploy on every merge to main (ADR 0011, CLAUDE.md "Avtomatik rejim"):
+#   1. all tests + expand-only check + alembic upgrade on a clean PostgreSQL (test.yml)
+#      -> any failure: no deploy (Telegram message)
+#   2-4. on the server (infra/cpanel/deploy.sh): pg_dump backup (last 10 kept) ->
+#      new code -> alembic upgrade head -> Passenger restart -> health check of THIS build
+#      -> on failure: automatic rollback (previous code + DB from the backup) + Telegram
+# Secrets are listed in docs/runbooks/deploy.md. Without them the deploy job is skipped
+# (with a notice), never failed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cloud
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+
+  notify-tests-failed:
+    needs: tests
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || exit 0
+          curl -fsS -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            --data-urlencode chat_id="$CHAT" \
+            --data-urlencode text="⛔ SmartHome: testlar yiqildi, deploy QILINMADI (${GITHUB_SHA::7}). $URL" > /dev/null
+
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SSH_HOST: ${{ secrets.CPANEL_SSH_HOST }}
+      SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
+      SSH_USER: ${{ secrets.CPANEL_SSH_USER }}
+      SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+      KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+      APP: ${{ secrets.CPANEL_APP_DIR }}
+      WEB: ${{ secrets.CPANEL_WEB_DIR }}
+      VENV: ${{ secrets.CPANEL_VENV_ACTIVATE }}
+      INIT_DB: ${{ secrets.CPANEL_DATABASE_URL }}
+      PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - name: Secrets present?
+        id: ready
+        run: |
+          missing=""
+          for v in SSH_HOST SSH_USER SSH_KEY APP WEB VENV INIT_DB PUBLIC_URL; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::Deploy skipped: secrets not set:$missing (docs/runbooks/deploy.md)"
+            echo "### Deploy o'tkazib yuborildi — Secrets yo'q:$missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build PWA + release
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          (cd apps/web && npm ci && npx vite build)
+          BUILD_ID="$GITHUB_SHA" sh infra/cpanel/build_release.sh release
+      - name: SSH setup
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::CPANEL_KNOWN_HOSTS not set: trusting the host key on first use"
+            ssh-keyscan -p "${SSH_PORT:-22}" "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+      - name: Upload release to the server
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -p ${SSH_PORT:-22} -o StrictHostKeyChecking=yes"
+          $SSH "$SSH_USER@$SSH_HOST" 'mkdir -p ~/sh-deploy/incoming'
+          rsync -az --delete -e "$SSH" release/ "$SSH_USER@$SSH_HOST:sh-deploy/incoming/"
+      - name: Deploy (backup -> migrate -> restart -> health -> auto rollback)
+        if: steps.ready.outputs.ok == 'true'
+        id: deploy
+        run: |
+          set +e
+          ssh -i ~/.ssh/id_deploy -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
+            "APP_DIR=\"\$HOME/$APP\" WEB_DIR=\"\$HOME/$WEB\" STAGE_DIR=\"\$HOME/sh-deploy/incoming\" \
+             STATE_DIR=\"\$HOME/sh-deploy\" VENV_ACTIVATE='$VENV' EXPECT_BUILD='$GITHUB_SHA' \
+             HEALTH_URL='$PUBLIC_URL/api/v1/health' INIT_DATABASE_URL='$INIT_DB' \
+             TELEGRAM_BOT_TOKEN='$TG_TOKEN' PUBLIC_BASE_URL='$PUBLIC_URL' \
+             bash \"\$HOME/sh-deploy/incoming/deploy.sh\"" 2>&1 | tee deploy.log
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          grep -E '^(RESULT|DETAIL|PREVIOUS_BUILD)=' deploy.log >> "$GITHUB_OUTPUT" || true
+          exit "$code"
+      - name: Telegram
+        if: always() && steps.ready.outputs.ok == 'true' && steps.deploy.outputs.code != '0'
+        env:
+          CODE: ${{ steps.deploy.outputs.code }}
+          DETAIL: ${{ steps.deploy.outputs.DETAIL }}
+          PREV: ${{ steps.deploy.outputs.PREVIOUS_BUILD }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || exit 0
+          case "$CODE" in
+            10) head="⚠️ SmartHome deploy yiqildi — AVTOMATIK QAYTARILDI (versiya ${PREV::7}, DB zaxiradan)" ;;
+            11) head="⏸ SmartHome deploy boshlanmadi — serverda hech narsa o'zgarmadi" ;;
+            12) head="🆘 SmartHome deploy yiqildi va QAYTARISH HAM YIQILDI — darhol tekshiring" ;;
+            *)  head="⛔ SmartHome deploy yiqildi (yuklash yoki SSH xatosi), server o'zgarmagan bo'lishi kerak" ;;
+          esac
+          curl -fsS -X POST "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
+            --data-urlencode chat_id="$TG_CHAT" \
+            --data-urlencode text="$head
+          Build: ${GITHUB_SHA::7}
+          Sabab: ${DETAIL:-noma'lum}
+          $URL" > /dev/null

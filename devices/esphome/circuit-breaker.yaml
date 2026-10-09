@@ -1,0 +1,135 @@
+# ESP32 controlling ONE smart circuit breaker in the panel (ADR 0015, "Elektr shiti").
+#
+# Hardware (inventory: brand/model open): a DIN breaker with a motor operator (remote
+# close/open by a short pulse), an auxiliary contact (OF: shows the real contact position)
+# and an alarm contact (SD: closes only when the PROTECTION tripped, not on a normal open).
+#   closed  <- aux contact (OF)    the ONLY proof that the line switched (confirm_attribute)
+#   tripped <- alarm contact (SD)  overcurrent / short circuit / residual current
+# Safety lives here, not in the app (CLAUDE.md rule 6):
+#   - a tripped breaker is NEVER closed remotely: the fault must be found on site first
+#     (ack rejected/safety_rule + event breaker.close_refused);
+#   - the protection itself is the breaker's own mechanics, the ESP32 cannot override it;
+#   - after a power loss the ESP32 sends no pulse at all (the breaker keeps its position).
+# Wiring inside the panel: qualified electrician only (H-08).
+
+substitutions:
+  device_key: breaker_kitchen
+  friendly_name: "1 — Oshxona"
+  close_pin: GPIO26       # pulse to the motor operator: close
+  open_pin: GPIO25        # pulse to the motor operator: open
+  aux_pin: GPIO27         # OF contact: closed = main contacts closed
+  trip_pin: GPIO14        # SD contact: closed = protection tripped
+  pulse_ms: 300ms
+
+packages:
+  base: !include common/base.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+output:
+  - platform: gpio
+    id: out_close
+    pin: ${close_pin}
+  - platform: gpio
+    id: out_open
+    pin: ${open_pin}
+
+binary_sensor:
+  - platform: gpio
+    id: aux
+    pin:
+      number: ${aux_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    on_state:
+      - script.execute: publish_state
+  - platform: gpio
+    id: tripped
+    pin:
+      number: ${trip_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    on_press:
+      - lambda: |-
+          id(mqtt_client).publish_json("home/${device_key}/event", [](JsonObject root) {
+            root["schema"] = 1;
+            root["type"] = "breaker.tripped";
+          }, 1, false);
+    on_state:
+      - script.execute: publish_state
+
+script:
+  - id: publish_state
+    mode: queued
+    then:
+      - mqtt.publish_json:
+          topic: home/${device_key}/state
+          retain: true
+          qos: 1
+          payload: |-
+            root["schema"] = 1;
+            root["source"] = "reported";
+            JsonObject b = root["states"]["breaker"].to<JsonObject>();
+            if (id(aux).has_state()) b["closed"] = id(aux).state;
+            if (id(tripped).has_state()) b["tripped"] = id(tripped).state;
+  - id: pulse_close
+    mode: single
+    then:
+      - output.turn_off: out_open
+      - output.turn_on: out_close
+      - delay: ${pulse_ms}
+      - output.turn_off: out_close
+  - id: pulse_open
+    mode: single
+    then:
+      - output.turn_off: out_close
+      - output.turn_on: out_open
+      - delay: ${pulse_ms}
+      - output.turn_off: out_open
+
+mqtt:
+  on_connect:
+    - script.execute: publish_state
+  on_json_message:
+    - topic: home/${device_key}/cmd
+      qos: 1
+      then:
+        - lambda: |-
+            const std::string cid = x["command_id"] | "";
+            const std::string cap = x["capability"] | "";
+            const std::string act = x["action"] | "";
+            if (cid.empty()) return;  // not our contract: ignore, never act on it
+            auto ack = [&](const char *status, const char *reason) {
+              id(mqtt_client).publish_json("home/${device_key}/ack", [&](JsonObject root) {
+                root["schema"] = 1;
+                root["command_id"] = cid;
+                root["status"] = status;
+                if (reason != nullptr) root["reason"] = reason;
+              }, 1, false);
+            };
+            if (cap != "breaker") { ack("rejected", "invalid_params"); return; }
+            if (act == "close") {
+              // Unknown trip state counts as tripped: never close blind.
+              if (!id(tripped).has_state() || id(tripped).state) {
+                ack("rejected", "safety_rule");
+                id(mqtt_client).publish_json("home/${device_key}/event", [](JsonObject root) {
+                  root["schema"] = 1;
+                  root["type"] = "breaker.close_refused";
+                }, 1, false);
+                return;
+              }
+              ack("acked", nullptr);
+              id(pulse_close).execute();
+            } else if (act == "open") {
+              ack("acked", nullptr);
+              id(pulse_open).execute();
+            } else {
+              ack("rejected", "invalid_params");
+            }

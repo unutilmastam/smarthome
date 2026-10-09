@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthome.local/contracts/ack.schema.json",
+  "title": "Command result, Hub -> Backend (ARCHITECTURE 4.3)",
+  "description": "acked = device received the command. confirmed = state really changed (confirm_attribute feedback). rejected = Hub refused, command was NOT executed. failed = executed or attempted, but no success.",
+  "type": "object",
+  "required": ["schema", "command_id", "status", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "command_id": { "type": "string", "format": "uuid" },
+    "status": { "enum": ["acked", "confirmed", "rejected", "failed"] },
+    "reason": {
+      "enum": [
+        "bad_signature", "expired", "replay", "forbidden", "safety_rule",
+        "unknown_device", "invalid_params", "device_offline",
+        "no_feedback", "device_error"
+      ]
+    },
+    "detail": { "type": "string", "maxLength": 500 },
+    "ts": { "type": "string", "format": "date-time", "pattern": "Z$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "rejected" } } },
+      "then": {
+        "required": ["reason"],
+        "properties": {
+          "reason": {
+            "enum": [
+              "bad_signature", "expired", "replay", "forbidden",
+              "safety_rule", "unknown_device", "invalid_params", "device_offline"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } } },
+      "then": {
+        "required": ["reason"],
+        "properties": { "reason": { "enum": ["no_feedback", "device_offline", "device_error"] } }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["acked", "confirmed"] } } },
+      "then": { "not": { "required": ["reason"] } }
+    }
+  ]
+}

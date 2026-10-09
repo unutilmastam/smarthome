@@ -275,3 +275,52 @@ def test_install_script_first_run_creates_owner_and_update_reuses_answers(server
     assert p.returncode == 0, p.stdout + p.stderr
     assert "Owner created" not in p.stdout
     assert server.health()["build"] == "v10"
+
+
+def test_hosts_without_rsync_deploy_and_roll_back_the_same_way(server):
+    """hostmaster.uz has no rsync: deploy.sh falls back to the Python copy (SH_NO_RSYNC forces it)."""
+    no_rsync = {"SH_NO_RSYNC": "1"}
+    server.release("v1")
+    code, _, log = server.deploy("v1", first=True, extra=no_rsync)
+    assert code == 0, log
+    (server.web / "api").mkdir(exist_ok=True)
+    (server.web / "api" / ".htaccess").write_text("PassengerAppRoot /home/u/smarthome-api\n")
+    (server.web / "stale.js").write_text("old")
+    (server.app / "logs").mkdir(exist_ok=True)
+    (server.app / "logs" / "app.log").write_text("keep")
+    server.release("v2")
+    code, _, log = server.deploy("v2", extra=no_rsync)
+    assert code == 0, log
+    assert server.health()["build"] == "v2"
+    assert not (server.web / "stale.js").exists()                 # --delete
+    assert (server.web / "api" / ".htaccess").exists()            # excluded: kept
+    assert (server.app / "logs" / "app.log").read_text() == "keep"
+    assert (server.app / ".env").exists()
+    server.release("v3", add_migration("    raise RuntimeError('migration bug')"))
+    code, out, log = server.deploy("v3", extra=no_rsync)
+    assert code == 10 and out["RESULT"] == "rolled_back", log
+    assert server.health()["build"] == "v2"
+    assert (server.web / "api" / ".htaccess").exists()
+
+
+def test_python_fallback_matches_rsync(tmp_path):
+    if not shutil.which("rsync"):
+        pytest.skip("rsync not installed")
+    fn = DEPLOY.read_text().split("sync_tree() {", 1)[1].split("\n}\n", 1)[0]
+    src = tmp_path / "src"
+    for rel, text in {"a.txt": "1", "d/b.txt": "2", "d/logs/x": "3", "api/y": "4", "x/api/z": "5"}.items():
+        (src / rel).parent.mkdir(parents=True, exist_ok=True)
+        (src / rel).write_text(text)
+    (src / "link").symlink_to("a.txt")
+    results = []
+    for mode in ("rsync", "python"):
+        dst = tmp_path / mode
+        for rel, text in {"old.txt": "o", "api/keep": "k", "d/logs/keep": "k", "a.txt": "stale"}.items():
+            (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+            (dst / rel).write_text(text)
+        env = {**os.environ, **({"SH_NO_RSYNC": "1"} if mode == "python" else {})}
+        script = f"sync_tree() {{{fn}\n}}\nsync_tree --exclude '/api/' --exclude 'logs/' {src}/ {dst}/"
+        subprocess.run(["bash", "-c", script], env=env, check=True)
+        results.append(sorted((str(p.relative_to(dst)), p.is_symlink() and os.readlink(p) or p.read_text())
+                              for p in dst.rglob("*") if p.is_file() or p.is_symlink()))
+    assert results[0] == results[1]

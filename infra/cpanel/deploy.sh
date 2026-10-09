@@ -27,6 +27,66 @@ RESTART_CMD="${RESTART_CMD:-mkdir -p \"$APP_DIR/tmp\" && touch \"$APP_DIR/tmp/re
 # A deploy must never delete them.
 WEB_KEEP=(--exclude '/api/' --exclude '/.well-known/' --exclude '/cgi-bin/')
 
+# `rsync -a --delete [--exclude P]... SRC/ DST/`. Some shared hosts (hostmaster.uz) have no
+# rsync: the same semantics in Python (patterns: '/x/' anchored dir, 'x/' dir anywhere,
+# 'x' name anywhere; excluded paths in DST are neither copied over nor deleted).
+sync_tree() {
+  if command -v rsync >/dev/null 2>&1 && [ -z "${SH_NO_RSYNC:-}" ]; then
+    rsync -a --delete "$@"; return
+  fi
+  python3 - "$@" <<'PY'
+import os, shutil, sys
+
+args, pats = sys.argv[1:], []
+while args and args[0] == "--exclude":
+    pats.append(args[1]); args = args[2:]
+src, dst = (a.rstrip("/") for a in args)
+
+def excluded(rel, is_dir):
+    for p in pats:
+        if p.endswith("/") and not is_dir:
+            continue
+        name = p.strip("/")
+        if (rel == name) if p.startswith("/") else (os.path.basename(rel) == name):
+            return True
+    return False
+
+def is_dir(path):
+    return os.path.isdir(path) and not os.path.islink(path)
+
+def remove(path):
+    shutil.rmtree(path) if is_dir(path) else os.unlink(path)
+
+def sync(rel):
+    s, d = os.path.join(src, rel), os.path.join(dst, rel)
+    if is_dir(d) is False and os.path.lexists(d):
+        os.unlink(d)
+    os.makedirs(d, exist_ok=True)
+    names = set(os.listdir(s))
+    for name in sorted(os.listdir(d)):        # --delete, but never touch excluded paths
+        r = os.path.join(rel, name) if rel else name
+        if name not in names and not excluded(r, is_dir(os.path.join(d, name))):
+            remove(os.path.join(d, name))
+    for name in sorted(names):
+        r = os.path.join(rel, name) if rel else name
+        sp, dp = os.path.join(s, name), os.path.join(d, name)
+        if excluded(r, is_dir(sp)):
+            continue
+        if is_dir(sp):
+            sync(r)
+            continue
+        if os.path.lexists(dp) and (is_dir(dp) or os.path.islink(dp) or os.path.islink(sp)):
+            remove(dp)
+        if os.path.islink(sp):
+            os.symlink(os.readlink(sp), dp)
+        else:
+            shutil.copy2(sp, dp)
+    shutil.copystat(s, d)
+
+sync("")
+PY
+}
+
 BACKUPS="$STATE_DIR/backups"
 PREV="$STATE_DIR/previous"
 LOCK="$STATE_DIR/lock"
@@ -86,8 +146,8 @@ printf 'BACKUP=%s\n' "$DUMP"
 # ---- 2. snapshot the running release ---------------------------------------------------
 HAVE_PREV=0
 if [ -f "$APP_DIR/passenger_wsgi.py" ] && [ -d "$APP_DIR/app" ]; then
-  rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$APP_DIR/" "$PREV/api/"
-  mkdir -p "$WEB_DIR" && rsync -a --delete "${WEB_KEEP[@]}" "$WEB_DIR/" "$PREV/web/"
+  sync_tree --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$APP_DIR/" "$PREV/api/"
+  mkdir -p "$WEB_DIR" && sync_tree "${WEB_KEEP[@]}" "$WEB_DIR/" "$PREV/web/"
   HAVE_PREV=1
 fi
 
@@ -125,8 +185,8 @@ rollback() {
   local why="$1"
   log "FAILED: $why -> rolling back"
   if [ "$HAVE_PREV" = 1 ]; then
-    rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$PREV/api/" "$APP_DIR/"
-    rsync -a --delete "${WEB_KEEP[@]}" "$PREV/web/" "$WEB_DIR/"
+    sync_tree --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$PREV/api/" "$APP_DIR/"
+    sync_tree "${WEB_KEEP[@]}" "$PREV/web/" "$WEB_DIR/"
     $PIP_INSTALL "$APP_DIR/requirements.txt" || log "pip install of previous release failed"
   fi
   if ! restore_db; then
@@ -172,12 +232,12 @@ print(base64.urlsafe_b64encode(k).rstrip(b"=").decode())' 2>/dev/null)"
   else log "WARNING: could not generate VAPID key (Web Push stays off)"; fi
 fi
 mkdir -p "$APP_DIR" "$WEB_DIR"
-rsync -a --delete --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$STAGE_DIR/api/" "$APP_DIR/" \
+sync_tree --exclude '.env' --exclude 'tmp/' --exclude 'logs/' "$STAGE_DIR/api/" "$APP_DIR/" \
   || rollback "code upload into $APP_DIR failed"
 # Keep a CloudLinux Passenger block from the live .htaccess on top of ours.
 PASSENGER_BLOCK="$(sed -n '/CLOUDLINUX PASSENGER CONFIGURATION BEGIN/,/CLOUDLINUX PASSENGER CONFIGURATION END/p' \
   "$WEB_DIR/.htaccess" 2>/dev/null || true)"
-rsync -a --delete "${WEB_KEEP[@]}" "$STAGE_DIR/web/" "$WEB_DIR/" || rollback "web upload failed"
+sync_tree "${WEB_KEEP[@]}" "$STAGE_DIR/web/" "$WEB_DIR/" || rollback "web upload failed"
 if [ -n "$PASSENGER_BLOCK" ]; then
   { printf '%s\n\n' "$PASSENGER_BLOCK"; cat "$WEB_DIR/.htaccess"; } > "$WEB_DIR/.htaccess.new" \
     && mv "$WEB_DIR/.htaccess.new" "$WEB_DIR/.htaccess" || rollback "could not keep the Passenger block in .htaccess"

@@ -81,7 +81,7 @@ function DimmerCtl({ cap, view, send, disabled, pending }: CtlProps) {
   );
 }
 
-function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
+function ClimateCtl({ device, cap, view, send, disabled, pending }: CtlProps) {
   const { t } = useTranslation();
   const spec = CAPABILITIES.climate.attributes;
   const target = view.attributes.target_temp;
@@ -92,7 +92,7 @@ function ClimateCtl({ cap, view, send, disabled, pending }: CtlProps) {
       <ValueView attr="power" label={attrLabel(t, "power")} value={view.attributes.power} pending={pending} />
       <ValueView attr="target_temp" label={attrLabel(t, "target_temp")} value={target} />
       <ValueView attr="mode" label={attrLabel(t, "mode")} value={view.attributes.mode} />
-      <p className="muted" style={{ margin: 0 }}>{t("control.assumedNote")}</p>
+      {device.adapter !== "yandex" && <p className="muted" style={{ margin: 0 }}>{t("control.assumedNote")}</p>}
       <div className="sw-line">
         <span className="muted">{t("attr.power")}</span>
         <PowerSwitch on={reportedBool(view.attributes.power)} label={t("attr.power")} pending={pending} disabled={disabled}
@@ -249,7 +249,7 @@ export function useDeviceSend(device: Device) {
     void send(cap, action, params).catch(() => undefined);
   };
   const pendingFor = (cap: string) => !!tracked && tracked.capability === cap &&
-    (["sending", "queued", "sent"].includes(tracked.status) || (tracked.status === "acked" && hasFeedback(cap)));
+    (["sending", "queued", "sent"].includes(tracked.status) || (tracked.status === "acked" && hasFeedback(cap, tracked.action)));
   const pinUi = (
     <>
       {pinFor && !me?.has_pin && <p className="error">{t("control.noPin")}</p>}

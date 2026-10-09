@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    auth, automations, cameras, commands, devices, energy, events, health, homes, hub, hubs, notifications, realtime,
+    auth, automations, cameras, commands, devices, energy, events, health, homes, hub, hubs, integrations, notifications, realtime,
 )
 
 api_router = APIRouter()
@@ -18,3 +18,4 @@ api_router.include_router(cameras.router)
 api_router.include_router(events.router)
 api_router.include_router(automations.router)
 api_router.include_router(notifications.router)
+api_router.include_router(integrations.router)

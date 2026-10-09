@@ -14,6 +14,9 @@ from app.core.config import Settings
 from app.core.contracts import Contracts
 from app.db.types import utcnow
 from app.models import Device, Hub
+from app.services.adapters import CLOUD_ADAPTERS
+
+CLOUD_FRESH_S = 180   # cron syncs every minute; three missed syncs = not fresh
 
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
@@ -56,6 +59,10 @@ def device_view(device: Device, contracts: Contracts, settings: Settings,
                 hub: Optional[Hub], now: Optional[datetime] = None) -> dict:
     now = now or utcnow()
     online_hub = hub_is_online(hub, settings, now)
+    if device.adapter in CLOUD_ADAPTERS:
+        # No hub in the way (ADR 0016): the source is reachable while its cloud sync is fresh.
+        online_hub = device.availability_ts is not None and \
+            now - device.availability_ts <= timedelta(seconds=CLOUD_FRESH_S)
     availability = device.availability if online_hub else "unknown"
     unsupported = set(device.unsupported or [])
     stored: Dict[tuple, object] = {(s.capability, s.attribute): s for s in device.states}

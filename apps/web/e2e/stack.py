@@ -104,6 +104,11 @@ def main():
     broker = start([shutil.which("mosquitto") or "/usr/sbin/mosquitto", "-c", str(conf)])
     wait_port(mport, proc=broker)
 
+    # 1b. Fake Yandex Smart Home API (ADR 0016) [SIM].
+    yport = free_port()
+    start([PY, str(Path(__file__).resolve().parent / "fake_yandex.py"), str(yport)])
+    wait_port(yport)
+
     # 2. Backend DB + seed (owner, home, hub, devices).
     db_url = f"sqlite:///{tmp / 'backend.db'}"
     # LOGIN_IP_LIMIT: every e2e test logs in from 127.0.0.1; the real limit (20/5 min)
@@ -111,7 +116,8 @@ def main():
     benv = {"ENV": "development", "DATABASE_URL": db_url, "COOKIE_SECURE": "false",
             "LOGIN_IP_LIMIT": "1000",
             "JWT_SECRET": "e2e-only-jwt-0123456789abcdef0123456789",
-            "SIGNING_MASTER_KEY": "e2e-only-signing-0123456789abcdef01234567"}
+            "SIGNING_MASTER_KEY": "e2e-only-signing-0123456789abcdef01234567",
+            "YANDEX_API_BASE": f"http://127.0.0.1:{yport}/v1.0"}
     subprocess.run([PY, "-m", "alembic", "upgrade", "head"], cwd=BACKEND, env={**os.environ, **benv},
                    check=True)
     seed = subprocess.run([PY, "-c", SEED], cwd=BACKEND, env={**os.environ, **benv}, check=True,

@@ -23,6 +23,7 @@ from app.db.types import utcnow
 from app.models import Command, CommandEvent, Device, HomeMember, Hub, User
 from app.models.command import RANK, TERMINAL
 from app.services import audit, rate_limit
+from app.services.adapters import CLOUD_ADAPTERS
 from app.services.device_view import hub_is_online, iso
 from app.services.devices import active_hub
 from app.services.realtime import NullRealtime, RealtimeError, topic_cmd
@@ -161,8 +162,9 @@ def create_command(db: Session, settings: Settings, contracts: Contracts, user: 
 
     if not device.enabled:
         raise _reject("DEVICE_DISABLED", 409, "Device is disabled")
-    hub = active_hub(db, device.home_id)
-    if not hub_is_online(hub, settings):
+    cloud = device.adapter in CLOUD_ADAPTERS
+    hub = None if cloud else active_hub(db, device.home_id)
+    if not cloud and not hub_is_online(hub, settings):
         raise _reject("HUB_UNREACHABLE", 503, "Home hub is not reachable; command not created")
     if device.availability == "offline":
         raise _reject("DEVICE_OFFLINE", 409, "Device is offline")
@@ -185,7 +187,7 @@ def create_command(db: Session, settings: Settings, contracts: Contracts, user: 
     key = derive_home_key(settings.signing_master_key, device.home_id)
     envelope = {"schema": 1, "payload": payload, "signature": sign(key, payload)}
     cmd = Command(
-        id=cid, home_id=device.home_id, device_id=device.id, hub_id=hub.id,
+        id=cid, home_id=device.home_id, device_id=device.id, hub_id=hub.id if hub else None,
         capability=body.capability, action=body.action, params=body.params, risk=spec["risk"],
         status="queued", requested_by=user.id, requested_role=member.role,
         idempotency_key=body.idempotency_key, envelope=envelope, created_at=now,
@@ -207,6 +209,12 @@ def create_command(db: Session, settings: Settings, contracts: Contracts, user: 
         if existing is None:
             raise
         return existing, False
+    if cloud:
+        # Run by the cloud itself (ADR 0016): no hub, nothing to publish.
+        from app.services import yandex
+        yandex.execute(db, settings, contracts, cmd, device)
+        db.refresh(cmd)
+        return cmd, True
     publish_command(db, realtime or NullRealtime(), cmd)
     return cmd, True
 

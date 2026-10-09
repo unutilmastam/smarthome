@@ -1032,3 +1032,42 @@ Testlar:
   - OF kontakt uzilsa, "bajarildi" deb ko'rsatilmaydi.
 - Web: vitest 58 passed. Playwright 18 passed: telefon va iPad'da 12 ta avtomatli shit, PIN bilan o'chirish va yoqish (tasdiqlandi), himoya ishlagan nasos bloklangan.
 - gitleaks: toza.
+
+## Qo'shimcha (egasining so'rovi, 2026-10-09): yangi dizayn, Tuya, IR pult, Alisa — ADR 0016
+
+Holat: kod tayyor, **[SIM]** testlardan o'tgan. Haqiqiy qurilmalar bilan sinov **[REAL]** hali qilinmagan (`docs/hardware/tests/tuya.md`).
+
+- **Dizayn.** Qurilmalar endi ixcham plitkalarda: dumaloq belgi qurilmani yoqib-o'chiradi, plitkaning o'zi qurilma sahifasini ochadi. Ranglar yangilandi, ko'rsatkichlar suriladigan qatorga o'tdi, pastki menyu "suzib" turadi. Holat qoidalari o'zgarmadi.
+- **Tuya / Smart Life** (Hub, uy tarmog'i, bulutsiz):
+  - Wi-Fi rele, quvvat o'lchaydigan rozetka, Wi-Fi avtomat (TO-Q-SY2-JWT kabi), chiroq va IR pult qo'llab-quvvatlanadi.
+  - Local Key bulutda shifrlangan holda saqlanadi, ilovada hech qachon ko'rsatilmaydi va faqat Hub'ga beriladi.
+  - Tasdiq faqat qurilmaning o'z javobidan keladi. Himoya ishlagan avtomat masofadan yoqilmaydi.
+- **IR pult** (oddiy televizor va konditsioner):
+  - Tugmalar asl pultdan o'rgatiladi va kod haqiqatan olingandagina tasdiqlanadi.
+  - Tugmani bosish faqat "yuborildi" bo'ladi, chunki IR'da qaytar aloqa yo'q.
+- **Yandex Alisa** (bulut orqali):
+  - Token bir marta kiritiladi va shifrlangan holda saqlanadi.
+  - Alisa chiroqlari, rozetkalari, televizorlari va konditsionerlari qurilma sifatida paydo bo'ladi.
+  - Holat har daqiqada yangilanadi. Buyruq Yandex holatini qayta o'qib tasdiqlanadi.
+  - Alisa ssenariylarini ilovadan ishga tushirish mumkin.
+- Migratsiyalar: `0010` (qurilma ulanishi va shifrlangan kalit), `0011` (integratsiyalar). Ikkalasi ham expand-only.
+- Yo'riqnomalar: `TUYA.md` va `ALISA.md` zip ichida (Local Key va token olish telefondan qilinadi).
+
+Testlar:
+- Contracts: 70 passed.
+- Backend: 247 passed. Shu jumladan Tuya kalitining shifrlanishi va qaytarilmasligi hamda soxta Yandex API bilan sinxronlash, tasdiqlash va xatolar.
+- Hub: 99 passed `[SIM]` (9 tasi Tuya ko'prigi uchun):
+  - e'tiborsiz qoldirilgan buyruq tasdiqlanmaydi;
+  - avtomat himoyasi;
+  - IR o'rgatish.
+- Web: vitest 61 passed. Playwright 28 passed (telefon + iPad):
+  - Tuya rele;
+  - Hovli shitidagi Wi-Fi avtomat;
+  - TV pultini o'rgatish va bosish;
+  - Tuya qurilma qo'shish (kalit ko'rinmaydi);
+  - Alisa'ni ulash, chiroq (tasdiqlandi), TV ovozi.
+- gitleaks: toza.
+
+Hali yo'q (keyingi bosqich):
+- bizning qurilmalarni Alisa'ga **ovozli** boshqaruv uchun berish (Yandex "aqlli uy" ko'nikmasi);
+- LG va Samsung televizorlarining o'z protokollari.

@@ -266,6 +266,7 @@ install_cron() {
   { crontab -l 2>/dev/null | grep -v "$marker"
     echo "* * * * * cd $APP_DIR && $py -m app.jobs.expire_due >/dev/null 2>&1 $marker"
     echo "* * * * * cd $APP_DIR && $py -m app.jobs.notify >/dev/null 2>&1 $marker"
+    echo "* * * * * cd $APP_DIR && $py -m app.jobs.yandex_sync >/dev/null 2>&1 $marker"
     echo "7 * * * * cd $APP_DIR && $py -m app.jobs.energy >/dev/null 2>&1 $marker"
     echo "17 3 * * * cd $APP_DIR && $py -m app.jobs.retention >/dev/null 2>&1 $marker"
     echo "41 3 * * * sh $APP_DIR/backup.sh >/dev/null 2>&1 $marker"

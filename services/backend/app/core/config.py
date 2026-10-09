@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # Notifications (ADR 0014). Secrets live only in .env (deploy.sh writes them on the server).
     public_base_url: Optional[str] = None            # https://home.example.uz (Telegram webhook)
     telegram_bot_token: Optional[str] = None
+    # Yandex Smart Home API (ADR 0016). Only e2e points it at a local fake.
+    yandex_api_base: str = "https://api.iot.yandex.net/v1.0"
     telegram_webhook_secret: Optional[str] = None
     telegram_bot_username: Optional[str] = None      # optional: asked from getMe when missing
     vapid_private_key: Optional[str] = None          # raw P-256 scalar, base64url

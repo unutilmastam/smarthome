@@ -119,6 +119,12 @@ test("gallery", async ({ page }, info) => {
   await page.getByRole("link", { name: "Zal televizori" }).first().click();
   await expect(page.getByText("ta tugma o'rgatilgan")).toBeVisible({ timeout: 20_000 });
   await shot("23-tv-pult");
+  if (await page.request.get("/api/v1/health").then((r) => r.ok())) {
+    await go("/devices", (p) => expect(p.getByRole("link", { name: "Yandex TV" }).first()).toBeVisible({ timeout: 5_000 }));
+    await page.getByRole("link", { name: "Yandex TV" }).first().click();
+    await expect(page.locator(".rval").first()).toBeVisible();
+    await shot("24-alisa-tv");
+  }
 
   // Dark theme
   await go("/settings", (p) => expect(p.getByLabel("Mavzu")).toBeVisible());

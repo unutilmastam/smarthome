@@ -6,6 +6,7 @@ from app.models.event import Event
 from app.models.device import Camera, Device, DeviceCapability, DeviceState
 from app.models.home import Floor, Home, HomeMember, Room
 from app.models.hub import Hub
+from app.models.integration import Integration
 from app.models.notification import (
     Notification, NotificationDelivery, PushSubscription, TelegramLink, TelegramLinkCode,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "Floor",
     "Home",
     "HomeMember",
+    "Integration",
     "Room",
     "Hub",
     "Notification",

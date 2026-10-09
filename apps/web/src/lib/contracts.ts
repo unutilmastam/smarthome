@@ -18,7 +18,12 @@ export function can(role: Role | undefined, permission: string): boolean {
 }
 
 /** Capabilities whose state proves a command (others stop at "acked"). */
-export function hasFeedback(capability: string): boolean {
+export function hasFeedback(capability: string, action?: string): boolean {
+  // IR: an assumed climate state and a remote button press are only ever "sent" (ADR 0016);
+  // a learned remote button IS confirmed (the hub lists it once the code was captured).
+  if (capability === "remote") return action === "learn" || action === "forget";
+  // A relative step ("volume +1") has no target value to wait for.
+  if (capability === "media") return !["volume_up", "volume_down", "channel_up", "channel_down"].includes(action ?? "");
   return capability !== "climate";
 }
 

@@ -39,7 +39,7 @@ export function useCommand(deviceId: string) {
   const follow = useCallback((cmd: Command, started: number, gen: number) => {
     if (gen !== generation.current) return;
     const done = TERMINAL.includes(cmd.status) ||
-      (cmd.status === "acked" && !hasFeedback(cmd.capability)) ||
+      (cmd.status === "acked" && !hasFeedback(cmd.capability, cmd.action)) ||
       Date.now() - started > MAX_TRACK_MS;
     setTracked({ id: cmd.id, capability: cmd.capability, action: cmd.action, status: cmd.status, reason: cmd.reason });
     void qc.invalidateQueries({ queryKey: ["device", deviceId] });

@@ -21,7 +21,7 @@ export function CommandStatus({ tracked, compact = false }: { tracked: Tracked |
   if (compact) {
     // On a tile: a thin progress line; words only when it did not work.
     const bad = ["rejected", "failed", "expired", "timeout"].includes(tracked.status);
-    const fin = tracked.status === "confirmed" || (tracked.status === "acked" && !hasFeedback(tracked.capability));
+    const fin = tracked.status === "confirmed" || (tracked.status === "acked" && !hasFeedback(tracked.capability, tracked.action));
     const pct = bad || fin ? 100 : ((REACHED[tracked.status] ?? -1) + 2) * 20;
     return (
       <div className={`cmd-line ${bad ? "bad" : fin ? "ok" : ""}`} role="status" data-testid="command-status"
@@ -32,7 +32,7 @@ export function CommandStatus({ tracked, compact = false }: { tracked: Tracked |
     );
   }
   const failed = ["rejected", "failed", "expired", "timeout"].includes(tracked.status);
-  const finalAck = tracked.status === "acked" && !hasFeedback(tracked.capability);
+  const finalAck = tracked.status === "acked" && !hasFeedback(tracked.capability, tracked.action);
   const done = tracked.status === "confirmed" || finalAck;
   const reached = REACHED[tracked.status] ?? 0;
   const label = tracked.status === "sending" ? t("command.sending")

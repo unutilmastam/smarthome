@@ -20,12 +20,16 @@ TUYA_PROFILES: Dict[str, Tuple[List[str], List[str]]] = {
 }
 TUYA_DPS_NAMES = {"switch", "current_ma", "power_w10", "voltage_v10", "energy_wh", "breaker",
                   "phase_a", "energy_kwh100", "fault", "brightness_1000"}
+# Devices our cloud reaches itself (no hub): Yandex Alisa (ADR 0016, section 3).
+CLOUD_ADAPTERS = {"yandex"}
 TUYA_VERSIONS = {"3.1", "3.2", "3.3", "3.4", "3.5"}
 
 
 def check_connection(adapter: str, connection: Optional[dict], capabilities: Dict[str, dict],
                      unsupported: List[str], has_secret: bool) -> List[str]:
     """Validates the connection for the adapter; returns the unsupported list to store."""
+    if adapter in CLOUD_ADAPTERS:
+        raise validation_error("Yandex devices are added by the Alisa link, not by hand")
     if adapter != "tuya":
         if connection:
             raise validation_error(f"adapter '{adapter}' takes no connection settings")

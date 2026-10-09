@@ -18,6 +18,7 @@ cp infra/cpanel/backup.sh infra/cpanel/restore.sh "$OUT/api/"
 cp infra/cpanel/deploy.sh infra/cpanel/install.sh "$OUT/"
 cp docs/runbooks/manual-upload.md "$OUT/OQING.md"
 cp docs/runbooks/tuya.md "$OUT/TUYA.md"
+cp docs/runbooks/alisa.md "$OUT/ALISA.md"
 # Build id: the health check waits for exactly this commit after the restart.
 BUILD="${BUILD_ID:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 printf 'BUILD = "%s"\n' "$BUILD" > "$OUT/api/app/_build.py"

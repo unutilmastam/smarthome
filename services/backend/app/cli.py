@@ -36,6 +36,18 @@ def create_owner(db, email: str, name: str, password: str, home_name: str,
         user = User(id=uuid.uuid4(), email=email, name=name, password_hash=hash_secret(password))
         db.add(user)
         db.flush()
+    else:
+        # Re-running the installer (or a forgotten password): the terminal sets it again and
+        # the existing home is kept instead of a second, empty one being created.
+        user.password_hash = hash_secret(password)
+        owned = db.scalar(select(Home).join(HomeMember, HomeMember.home_id == Home.id)
+                          .where(HomeMember.user_id == user.id, HomeMember.role == "owner"))
+        if owned is not None:
+            audit.record(db, "user.password_reset", actor_type="system", actor_id=user.id,
+                         home_id=owned.id, target_type="user", target_id=user.id,
+                         details={"via": "cli"})
+            db.commit()
+            return owned
     home = Home(id=uuid.uuid4(), name=home_name, timezone=timezone)
     db.add(home)
     db.flush()

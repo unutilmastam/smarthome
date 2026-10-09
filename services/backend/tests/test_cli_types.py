@@ -2,7 +2,7 @@ import io
 from datetime import datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import cli
 from app.core.config import get_settings
@@ -29,6 +29,16 @@ def test_cli_create_owner(tmp_path, monkeypatch, capsys):
             assert user.email == "me@example.com"
             assert s.scalar(select(HomeMember.role)) == "owner"
             assert s.scalar(select(AuditLog.action)) == "home.created"
+        # Running it again (installer re-run / forgotten password): same home, new password.
+        monkeypatch.setattr("sys.stdin", io.StringIO("another-password-2\n"))
+        assert cli.main(["create-owner", "--email", "me@example.com", "--name", "Men",
+                         "--password-stdin"]) == 0
+        from app.core.security import verify_secret
+        from app.models import Home
+        with Session(engine) as s:
+            assert s.scalar(select(func.count()).select_from(Home)) == 1
+            assert verify_secret(s.scalar(select(User)).password_hash, "another-password-2")
+            assert "user.password_reset" in s.scalars(select(AuditLog.action)).all()
         monkeypatch.setattr("sys.stdin", io.StringIO("short\n"))
         rc = cli.main(["create-owner", "--email", "x@example.com", "--name", "X",
                        "--password-stdin"])

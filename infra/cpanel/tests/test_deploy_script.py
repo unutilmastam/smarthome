@@ -258,7 +258,7 @@ def test_install_script_first_run_creates_owner_and_update_reuses_answers(server
            "HEALTH_URL": f"http://127.0.0.1:{server.port}/api/v1/health", "HEALTH_TIMEOUT": "25",
            "RESTART_CMD": str(server.restart), "PIP_INSTALL": ":", "SKIP_CRON": "1",
            "OWNER_EMAIL": "ega@example.uz", "OWNER_NAME": "Ega", "HOME_NAME": "Uy",
-           "OWNER_PASSWORD": "correct-horse-battery"}
+           "OWNER_PASSWORD": "correct-horse-battery", "SH_SKIP_HTTPS_CHECK": "1"}
     # A wrong answer remembered from an earlier try must not beat the value given now.
     server.state.mkdir(parents=True, exist_ok=True)
     (server.state / "install.conf").write_text("DOMAIN=itcode_smarthome\nWEB_DIR=/nowhere\n")

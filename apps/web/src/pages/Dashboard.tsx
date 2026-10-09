@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { groupPanels } from "../lib/panel";
 import { useDevices, useHubs, useRooms } from "../api/hooks";
 import type { Device } from "../api/types";
-import { DeviceCard } from "../components/DeviceCard";
+import { DeviceTile } from "../components/DeviceTile";
 import { useAddFlow, useCanConfigure } from "../components/AddFlow";
 import { Icon } from "../components/Icon";
 import { IrrigationStop } from "../components/IrrigationStop";
@@ -18,12 +18,12 @@ const good = (d: Device, cap: string, attr: string) => {
   return v && v.quality === "good" ? v.value : undefined;
 };
 
+/** A summary pill at the top of the home screen (like the status row of phone home apps). */
 function Stat({ icon, tone, label, value, testid }: { icon: string; tone: string; label: string; value: string; testid: string }) {
   return (
-    <div className={`card stat ${tone}`} data-testid={testid}>
-      <span className="ico"><Icon name={icon} size={20} /></span>
-      <span className="num">{value}</span>
-      <span className="muted">{label}</span>
+    <div className={`stat-pill ${tone}`} data-testid={testid}>
+      <span className="sp-ico"><Icon name={icon} size={18} /></span>
+      <span className="sp-text"><strong>{value}</strong><span>{label}</span></span>
     </div>
   );
 }
@@ -82,9 +82,12 @@ export function Dashboard() {
           ))}
         </div>
       )}
-      <h2>{pinned.length ? t("dashboard.pinned") : t("dashboard.title")}</h2>
-      {!pinned.length && <p className="muted">{t("dashboard.pinHint")}</p>}
-      <div className="grid">{shown.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>
+      <div className="section-title">
+        <h2>{pinned.length ? t("dashboard.pinned") : t("dashboard.title")}</h2>
+        <span className="muted">{shown.length}</span>
+      </div>
+      {!pinned.length && <p className="muted hint">{t("dashboard.pinHint")}</p>}
+      <div className="dgrid">{shown.map((d) => <DeviceTile key={d.id} device={d} role={home?.my_role} />)}</div>
     </>
   );
 }

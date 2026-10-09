@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useDevices, useRooms } from "../api/hooks";
 import type { Device } from "../api/types";
 import { useAddFlow, useCanConfigure } from "../components/AddFlow";
-import { DeviceCard } from "../components/DeviceCard";
+import { DeviceTile } from "../components/DeviceTile";
 import { Icon } from "../components/Icon";
 import { useLive } from "../components/Layout";
 import { roomIcon } from "../lib/catalog";
@@ -86,7 +86,7 @@ export function Rooms() {
               )}
             </div>
             {inRoom.length ? (
-              <div className="grid">{inRoom.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>
+              <div className="dgrid">{inRoom.map((d) => <DeviceTile key={d.id} device={d} role={home?.my_role} />)}</div>
             ) : <p className="muted">{t("rooms.noDevices")}</p>}
           </section>
         );

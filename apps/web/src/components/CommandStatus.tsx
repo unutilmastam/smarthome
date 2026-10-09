@@ -12,11 +12,24 @@ const STEPS = ["queued", "sent", "acked", "confirmed"] as const;
 const REACHED: Record<string, number> = { sending: -1, queued: 0, sent: 1, acked: 2, confirmed: 3 };
 
 /** Live progress of the REAL command lifecycle: Navbat → Hub → Qurilma → Tasdiq. */
-export function CommandStatus({ tracked }: { tracked: Tracked | null }) {
+export function CommandStatus({ tracked, compact = false }: { tracked: Tracked | null; compact?: boolean }) {
   const { t } = useTranslation();
   if (!tracked) return null;
   if (tracked.status === "error") {
     return <p className="error" role="alert">{errorText(t, tracked.error?.code, tracked.error?.message)}</p>;
+  }
+  if (compact) {
+    // On a tile: a thin progress line; words only when it did not work.
+    const bad = ["rejected", "failed", "expired", "timeout"].includes(tracked.status);
+    const fin = tracked.status === "confirmed" || (tracked.status === "acked" && !hasFeedback(tracked.capability));
+    const pct = bad || fin ? 100 : ((REACHED[tracked.status] ?? -1) + 2) * 20;
+    return (
+      <div className={`cmd-line ${bad ? "bad" : fin ? "ok" : ""}`} role="status" data-testid="command-status"
+        data-status={tracked.status} title={t(`command.${tracked.status}`, { defaultValue: tracked.status })}>
+        <i style={{ width: `${pct}%` }} />
+        {bad && <span className="error">{t(`command.${tracked.status}`)}{tracked.reason ? ` (${tracked.reason})` : ""}</span>}
+      </div>
+    );
   }
   const failed = ["rejected", "failed", "expired", "timeout"].includes(tracked.status);
   const finalAck = tracked.status === "acked" && !hasFeedback(tracked.capability);

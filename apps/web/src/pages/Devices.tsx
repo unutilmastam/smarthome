@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useDevices, useRooms } from "../api/hooks";
 import { useAddFlow, useCanConfigure } from "../components/AddFlow";
 import { Icon } from "../components/Icon";
-import { DeviceCard } from "../components/DeviceCard";
+import { DeviceTile } from "../components/DeviceTile";
 import { useLive } from "../components/Layout";
 import { CAPABILITIES } from "../lib/contracts";
 import { useCurrentHome } from "../lib/home";
@@ -52,7 +52,7 @@ export function Devices() {
           {canEdit && <button className="primary" onClick={() => open("device")}><Icon name="plus" size={18} /> {t("devices.add")}</button>}
         </div>
       ) : list.length === 0 ? <p className="muted">{t("devices.noMatch")}</p> :
-        <div className="grid">{list.map((d) => <DeviceCard key={d.id} device={d} role={home?.my_role} />)}</div>}
+        <div className="dgrid">{list.map((d) => <DeviceTile key={d.id} device={d} role={home?.my_role} />)}</div>}
     </>
   );
 }

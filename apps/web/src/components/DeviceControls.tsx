@@ -218,16 +218,35 @@ const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
   alarm: AlarmCtl,
 };
 
-export function DeviceControls({ device, role, compact = false }: { device: Device; role?: Role; compact?: boolean }) {
+/**
+ * Sending from any control surface (detail page, tile): high-risk actions ask for the PIN first;
+ * `pendingFor(cap)` is true while that capability's command is in flight.
+ */
+export function useDeviceSend(device: Device) {
   const { t } = useTranslation();
   const me = useSession((s) => s.me);
   const { send, tracked, busy } = useCommand(device.id);
   const [pinFor, setPinFor] = useState<{ cap: string; action: string; params?: Record<string, unknown> } | null>(null);
-
   const doSend: Send = (cap, action, params) => {
     if (CAPABILITIES[cap]?.risk === "high") { setPinFor({ cap, action, params }); return; }
     void send(cap, action, params).catch(() => undefined);
   };
+  const pendingFor = (cap: string) => !!tracked && tracked.capability === cap &&
+    (["sending", "queued", "sent"].includes(tracked.status) || (tracked.status === "acked" && hasFeedback(cap)));
+  const pinUi = (
+    <>
+      {pinFor && !me?.has_pin && <p className="error">{t("control.noPin")}</p>}
+      <PinDialog open={!!pinFor && !!me?.has_pin} action={pinFor ? actionLabel(t, pinFor.cap, pinFor.action) : ""}
+        onCancel={() => setPinFor(null)}
+        onSubmit={(pin) => { const p = pinFor!; setPinFor(null); void send(p.cap, p.action, p.params, pin).catch(() => undefined); }} />
+    </>
+  );
+  return { doSend, tracked, busy, pendingFor, pinUi };
+}
+
+export function DeviceControls({ device, role, compact = false }: { device: Device; role?: Role; compact?: boolean }) {
+  const { t } = useTranslation();
+  const { doSend, tracked, busy, pendingFor, pinUi } = useDeviceSend(device);
   const caps = Object.keys(device.capabilities);
   const offline = !device.hub_online || device.availability.status === "offline" || !device.enabled;
 
@@ -238,23 +257,17 @@ export function DeviceControls({ device, role, compact = false }: { device: Devi
         const Ctl = CONTROLS[cap] ?? ReadOnlyCtl;
         const allowed = can(role, view.permission);
         const isControl = Object.keys(CAPABILITIES[cap]?.actions ?? {}).length > 0;
-        const pending = !!tracked && tracked.capability === cap &&
-          (["sending", "queued", "sent"].includes(tracked.status) ||
-            (tracked.status === "acked" && hasFeedback(cap)));
         return (
           <section key={cap} aria-label={t(`cap.${cap}`)} style={{ display: "grid", gap: 8 }}>
             {!compact && caps.length > 1 && <strong>{t(`cap.${cap}`)}</strong>}
             <Ctl device={device} cap={cap} view={view} send={doSend}
-              disabled={!allowed || busy || offline} pending={pending} />
+              disabled={!allowed || busy || offline} pending={pendingFor(cap)} />
             {isControl && !allowed && <span className="muted">{t("control.readOnly")}</span>}
           </section>
         );
       })}
       <CommandStatus tracked={tracked} />
-      {pinFor && !me?.has_pin && <p className="error">{t("control.noPin")}</p>}
-      <PinDialog open={!!pinFor && !!me?.has_pin} action={pinFor ? actionLabel(t, pinFor.cap, pinFor.action) : ""}
-        onCancel={() => setPinFor(null)}
-        onSubmit={(pin) => { const p = pinFor!; setPinFor(null); void send(p.cap, p.action, p.params, pin).catch(() => undefined); }} />
+      {pinUi}
     </div>
   );
 }

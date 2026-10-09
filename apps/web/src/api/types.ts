@@ -32,6 +32,10 @@ export interface Device {
   availability: { status: "online" | "offline" | "unknown"; ts: string | null };
   hub_online: boolean;
   capabilities: Record<string, CapabilityView>;
+  /** Devices that are not ours (ADR 0016), e.g. Tuya: profile, device_id, ip, version. */
+  connection?: { profile?: string; device_id?: string; ip?: string; version?: string; [k: string]: unknown } | null;
+  /** The secret itself (Tuya Local Key) is never sent to the app. */
+  has_secret?: boolean;
 }
 
 export type Role = "owner" | "admin" | "family" | "guest" | "viewer";

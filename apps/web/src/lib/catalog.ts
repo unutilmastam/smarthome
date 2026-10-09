@@ -10,7 +10,21 @@ export interface DeviceType {
   icon: string;
   /** null = "custom": the user picks capabilities. */
   caps: string[] | null;
+  /** Smart Life / Tuya device (ADR 0016): the hub profile; the profile decides the capabilities. */
+  tuya?: "switch" | "plug_meter" | "breaker" | "light" | "ir";
+  /** IR remote layout drawn by the app. */
+  layout?: "tv" | "ac";
 }
+
+/** Off-the-shelf Wi-Fi devices (Smart Life / Tuya), reached by the hub on the home LAN. */
+export const TUYA_TYPES: DeviceType[] = [
+  { id: "tuya_breaker", icon: "breaker", caps: ["breaker", "power_meter"], tuya: "breaker" },
+  { id: "tuya_relay", icon: "power", caps: ["switch"], tuya: "switch" },
+  { id: "tuya_plug", icon: "socket", caps: ["switch", "power_meter"], tuya: "plug_meter" },
+  { id: "tuya_light", icon: "bulb", caps: ["switch", "dimmer"], tuya: "light" },
+  { id: "ir_tv", icon: "tv", caps: ["remote"], tuya: "ir", layout: "tv" },
+  { id: "ir_ac", icon: "ac", caps: ["remote"], tuya: "ir", layout: "ac" },
+];
 
 export const DEVICE_TYPES: DeviceType[] = [
   { id: "light", icon: "bulb", caps: ["switch"] },

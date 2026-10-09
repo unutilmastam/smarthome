@@ -10,6 +10,7 @@ import { formatValue } from "../lib/status";
 import { CommandStatus } from "./CommandStatus";
 import { Icon } from "./Icon";
 import { PinDialog } from "./PinDialog";
+import { MediaControl, RemoteControl } from "./RemoteControl";
 import { ValueView } from "./ValueView";
 
 type Send = (cap: string, action: string, params?: Record<string, unknown>) => void;
@@ -201,6 +202,20 @@ function AlarmCtl({ cap, view, send, disabled, pending }: CtlProps) {
   );
 }
 
+function MediaCtl({ cap, view, send, disabled, pending }: CtlProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="sw-line">
+        <ValueView attr="on" label={attrLabel(t, "on")} value={view.attributes.on} pending={pending} big />
+        <PowerSwitch on={reportedBool(view.attributes.on)} label={t("cap.media")} pending={pending} disabled={disabled}
+          onTurnOn={() => send(cap, "turn_on")} onTurnOff={() => send(cap, "turn_off")} />
+      </div>
+      <MediaControl view={view} send={send} disabled={disabled} />
+    </>
+  );
+}
+
 function ReadOnlyCtl({ view }: CtlProps) {
   const { t } = useTranslation();
   return <>{Object.keys(view.attributes).map((a) => <ValueView key={a} attr={a} label={attrLabel(t, a)} value={view.attributes[a]} />)}</>;
@@ -216,6 +231,8 @@ const CONTROLS: Record<string, (p: CtlProps) => JSX.Element> = {
   contactor: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
   breaker: (p) => <ButtonsCtl {...p} actions={["close", "open"]} />,
   alarm: AlarmCtl,
+  remote: ({ view, send, disabled, pending }) => <RemoteControl view={view} send={send} disabled={disabled} pending={pending} />,
+  media: MediaCtl,
 };
 
 /**

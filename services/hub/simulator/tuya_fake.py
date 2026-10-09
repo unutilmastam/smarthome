@@ -19,8 +19,10 @@ def phase_raw(volts: float, amps: float, watts: float) -> str:
 class FakeTuya:
     """profile: switch | plug_meter | breaker | light | ir."""
 
-    def __init__(self, profile: str, online: bool = True, ignore_writes: bool = False):
+    def __init__(self, profile: str, online: bool = True, ignore_writes: bool = False,
+                 auto_learn: bool = False):
         self.profile = profile
+        self.auto_learn = auto_learn         # e2e: "someone presses the old remote" after 0.5 s
         self.online = online
         self.ignore_writes = ignore_writes   # a device that answers but does not switch
         self.lock = threading.Lock()
@@ -58,6 +60,9 @@ class FakeTuya:
         self.sent.append(base64_code)
 
     def receive_button(self, timeout=30):
+        if self.auto_learn:
+            time.sleep(0.5)
+            return base64.b64encode(f"ir-{time.time_ns()}".encode()).decode()
         deadline = time.time() + min(timeout, 2)
         while time.time() < deadline:
             if self.next_ir:

@@ -114,6 +114,12 @@ test("gallery", async ({ page }, info) => {
   await go("/more", (p) => expect(p.getByRole("link", { name: /Xavfsizlik/ }).first()).toBeVisible());
   await shot("20-yana", false);
 
+  // Smart Life / Tuya IR remote (ADR 0016)
+  await go("/devices", (p) => expect(p.getByRole("link", { name: "Zal televizori" }).first()).toBeVisible());
+  await page.getByRole("link", { name: "Zal televizori" }).first().click();
+  await expect(page.getByText("ta tugma o'rgatilgan")).toBeVisible({ timeout: 20_000 });
+  await shot("23-tv-pult");
+
   // Dark theme
   await go("/settings", (p) => expect(p.getByLabel("Mavzu")).toBeVisible());
   await page.getByLabel("Mavzu").selectOption("dark");

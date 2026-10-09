@@ -30,6 +30,14 @@ function derivedVisual(d: Device): Visual {
   const c = d.capabilities;
   const offline = !d.hub_online || d.availability.status === "offline";
   const base = { offline };
+  if (c.remote) {
+    // IR: there is no state to show, only which remote it is.
+    return { ...base, icon: c.remote.config?.layout === "ac" ? "ac" : "tv", tone: c.remote.config?.layout === "ac" ? "cool" : "power", active: null };
+  }
+  if (c.media) {
+    const on = val(c.media.attributes.on);
+    return { ...base, icon: "tv", tone: "power", active: on === undefined ? null : !!on };
+  }
   if (c.alarm) {
     const st = val(c.alarm.attributes.state) as string | undefined;
     const alarm = st === "triggered" || st === "pending";

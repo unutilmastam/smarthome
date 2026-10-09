@@ -4,13 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api/client";
 import type { Device, Room } from "../api/types";
-import { DEVICE_ICONS, DEVICE_TYPES, KEY_RE, ROOM_ICONS, roomIcon, suggestKey, type DeviceType } from "../lib/catalog";
+import { DEVICE_ICONS, DEVICE_TYPES, KEY_RE, TUYA_TYPES, ROOM_ICONS, roomIcon, suggestKey, type DeviceType } from "../lib/catalog";
 import { CAPABILITIES } from "../lib/contracts";
 import { groupPanels, nextPosition } from "../lib/panel";
 import type { DevicePreset } from "./AddFlow";
 import { errorText } from "./CommandStatus";
 import { Icon } from "./Icon";
 import { IconPicker, Sheet } from "./Sheet";
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 
 function useSubmit() {
   const { t } = useTranslation();
@@ -78,6 +80,11 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
   const [curve, setCurve] = useState("");
   const [poles, setPoles] = useState("1");
   const [metered, setMetered] = useState(false);
+  // Smart Life / Tuya (ADR 0016): how the hub reaches it on the home network.
+  const [tuyaId, setTuyaId] = useState("");
+  const [tuyaIp, setTuyaIp] = useState("");
+  const [tuyaKey, setTuyaKey] = useState("");
+  const [tuyaVer, setTuyaVer] = useState("3.3");
   const taken = useMemo(() => devices.map((d) => d.key), [devices]);
   const panels = useMemo(() => groupPanels(devices), [devices]);
   const isBreaker = caps.includes("breaker");
@@ -87,7 +94,7 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
 
   const choose = (dt: DeviceType, pre?: DevicePreset) => {
     setType(dt); setIcon(dt.icon); setCaps(dt.caps ?? ["switch"]);
-    if (dt.id === "breaker") {
+    if (dt.id === "breaker" || dt.tuya === "breaker") {
       // A breaker is named after its circuit ("Oshxona"), not after its type.
       const p = pre?.panel ?? panels[0]?.panel ?? "";
       setName(""); setKey(""); setPanel(p);
@@ -103,7 +110,8 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
     if (!open) return;
     setType(null); setName(""); setKey(""); setKeyTouched(false); setMaxRuntime(""); setRoom(defaultRoom); reset();
     setPanel(""); setPosition(""); setRating(""); setCurve(""); setPoles("1"); setMetered(false);
-    const dt = preset && DEVICE_TYPES.find((x) => x.id === preset.type);
+    setTuyaId(""); setTuyaIp(""); setTuyaKey(""); setTuyaVer("3.3");
+    const dt = preset && [...TUYA_TYPES, ...DEVICE_TYPES].find((x) => x.id === preset.type);
     if (dt) choose(dt, preset);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -113,7 +121,10 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
   const keyOk = KEY_RE.test(key);
   const pos = Number(position);
   const positionOk = !isBreaker || (Number.isInteger(pos) && pos >= 1 && pos <= 99);
-  const valid = !!name.trim() && keyOk && caps.length > 0 && (!needsRuntime || Number(maxRuntime) >= 1) && positionOk;
+  const tuya = type?.tuya;
+  const tuyaOk = !tuya || (/^[A-Za-z0-9]{10,32}$/.test(tuyaId.trim()) && IPV4.test(tuyaIp.trim())
+    && /^[\x21-\x7e]{8,64}$/.test(tuyaKey));
+  const valid = !!name.trim() && keyOk && caps.length > 0 && (!needsRuntime || Number(maxRuntime) >= 1) && positionOk && tuyaOk;
 
   const submit = async () => {
     const capabilities: Record<string, Record<string, number | string>> = {};
@@ -128,6 +139,11 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
       if (metered) capabilities.power_meter = {};
     }
     const body: Record<string, unknown> = { key, name: name.trim(), adapter: "esphome", protocol: "mqtt", capabilities, icon };
+    if (tuya) {
+      Object.assign(body, { adapter: "tuya", protocol: "tuya-local", secret: tuyaKey,
+        connection: { profile: tuya, device_id: tuyaId.trim(), ip: tuyaIp.trim(), version: tuyaVer } });
+      if (type?.layout) capabilities.remote = { layout: type.layout };
+    }
     if (room) body.room_id = room;
     const created = await run(() => api.post<Device>(`/homes/${homeId}/devices`, body));
     if (created) {
@@ -141,14 +157,27 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
     <Sheet open={open} onClose={onClose} title={type ? t("devices.add") : t("devices.pickType")}
       onBack={type ? () => setType(null) : undefined}>
       {!type ? (
-        <div className="tiles">
-          {DEVICE_TYPES.map((dt) => (
-            <button key={dt.id} type="button" className="tile" onClick={() => choose(dt)}>
-              <span className="ico"><Icon name={dt.icon} size={26} /></span>
-              <span>{t(`dtype.${dt.id}`)}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <h3 className="pick-head"><Icon name="wifi" size={18} /> {t("devices.tuyaSection")}</h3>
+          <p className="muted pick-sub">{t("devices.tuyaSectionHint")}</p>
+          <div className="tiles">
+            {TUYA_TYPES.map((dt) => (
+              <button key={dt.id} type="button" className="tile" onClick={() => choose(dt)}>
+                <span className="ico"><Icon name={dt.icon} size={26} /></span>
+                <span>{t(`dtype.${dt.id}`)}</span>
+              </button>
+            ))}
+          </div>
+          <h3 className="pick-head"><Icon name="devices" size={18} /> {t("devices.ownSection")}</h3>
+          <div className="tiles">
+            {DEVICE_TYPES.map((dt) => (
+              <button key={dt.id} type="button" className="tile" onClick={() => choose(dt)}>
+                <span className="ico"><Icon name={dt.icon} size={26} /></span>
+                <span>{t(`dtype.${dt.id}`)}</span>
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <form className="form" onSubmit={(e) => { e.preventDefault(); if (valid) void submit(); }}>
           <div className="preview">
@@ -195,11 +224,38 @@ export function AddDeviceSheet({ open, onClose, homeId, rooms, devices, defaultR
                   </select>
                 </label>
               </div>
-              <label className="check">
-                <input type="checkbox" checked={metered} onChange={(e) => setMetered(e.target.checked)} />
-                {t("devices.metered")}
-              </label>
+              {!tuya && (
+                <label className="check">
+                  <input type="checkbox" checked={metered} onChange={(e) => setMetered(e.target.checked)} />
+                  {t("devices.metered")}
+                </label>
+              )}
               <p className="muted" style={{ margin: 0 }}>{t("devices.breakerNote")}</p>
+            </fieldset>
+          )}
+          {tuya && (
+            <fieldset className="pick breaker-fields">
+              <legend>{t("tuya.connection")}</legend>
+              <p className="note"><Icon name="wifi" size={18} /> {t("tuya.help")}</p>
+              <label>{t("tuya.deviceId")}
+                <input required value={tuyaId} autoCapitalize="none" spellCheck={false} placeholder="bf12ab34cd56ef7890xxxx"
+                  onChange={(e) => setTuyaId(e.target.value)} />
+              </label>
+              <label>{t("tuya.localKey")}
+                <input required type="password" autoComplete="off" value={tuyaKey} onChange={(e) => setTuyaKey(e.target.value)} />
+                <span className="muted">{t("tuya.localKeyHint")}</span>
+              </label>
+              <div className="row2">
+                <label>{t("tuya.ip")}
+                  <input required inputMode="decimal" value={tuyaIp} placeholder="192.168.1.50" onChange={(e) => setTuyaIp(e.target.value)} />
+                </label>
+                <label>{t("tuya.version")}
+                  <select value={tuyaVer} onChange={(e) => setTuyaVer(e.target.value)}>
+                    {["3.3", "3.4", "3.5", "3.1"].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </label>
+              </div>
+              <span className="muted">{t("tuya.ipHint")}</span>
             </fieldset>
           )}
           <RoomChips rooms={rooms} value={room} onChange={setRoom} />
@@ -250,15 +306,26 @@ export function EditDeviceSheet({ open, onClose, device, rooms }: {
   const [icon, setIcon] = useState(device.icon ?? "");
   const [room, setRoom] = useState(device.room_id ?? "");
   const [confirmDel, setConfirmDel] = useState(false);
+  // Smart Life / Tuya (ADR 0016): the IP may change; a new Local Key after re-pairing.
+  const conn = device.connection ?? null;
+  const [ip, setIp] = useState(String(conn?.ip ?? ""));
+  const [newKey, setNewKey] = useState("");
   useEffect(() => {
-    if (open) { setName(device.name); setIcon(device.icon ?? ""); setRoom(device.room_id ?? ""); setConfirmDel(false); }
+    if (open) {
+      setName(device.name); setIcon(device.icon ?? ""); setRoom(device.room_id ?? ""); setConfirmDel(false);
+      setIp(String(device.connection?.ip ?? "")); setNewKey("");
+    }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const connOk = !conn || (IPV4.test(ip.trim()) && (!newKey || /^[\x21-\x7e]{8,64}$/.test(newKey)));
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["devices", device.home_id] });
     void qc.invalidateQueries({ queryKey: ["device", device.id] });
   };
   const save = async () => {
-    const res = await run(() => api.patch(`/devices/${device.id}`, { name: name.trim(), icon: icon || null, room_id: room || null }));
+    const body: Record<string, unknown> = { name: name.trim(), icon: icon || null, room_id: room || null };
+    if (conn && ip.trim() !== conn.ip) body.connection = { ...conn, ip: ip.trim() };
+    if (conn && newKey) body.secret = newKey;
+    const res = await run(() => api.patch(`/devices/${device.id}`, body));
     if (res !== undefined) { refresh(); onClose(); }
   };
   const remove = async () => {
@@ -271,9 +338,20 @@ export function EditDeviceSheet({ open, onClose, device, rooms }: {
         <label>{t("devices.name")}<input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></label>
         <RoomChips rooms={rooms} value={room} onChange={setRoom} />
         <IconPicker icons={DEVICE_ICONS} value={icon} onChange={setIcon} label={t("devices.icon")} labelFor={(i) => t(`icon.${i}`)} />
+        {conn && (
+          <fieldset className="pick breaker-fields">
+            <legend>{t("tuya.connection")}</legend>
+            <label>{t("tuya.ip")}
+              <input required inputMode="decimal" value={ip} onChange={(e) => setIp(e.target.value)} />
+            </label>
+            <label>{t("tuya.newKey")}
+              <input type="password" autoComplete="off" value={newKey} onChange={(e) => setNewKey(e.target.value)} />
+            </label>
+          </fieldset>
+        )}
         <p className="muted" style={{ margin: 0 }}>{t("devices.keyReadonly", { key: device.key })}</p>
         {view}
-        <button className="primary block" type="submit" disabled={busy || !name.trim()}>{t("app.save")}</button>
+        <button className="primary block" type="submit" disabled={busy || !name.trim() || !connOk}>{t("app.save")}</button>
         <div className="danger-zone">
           {!confirmDel ? (
             <button type="button" className="danger" onClick={() => setConfirmDel(true)}>

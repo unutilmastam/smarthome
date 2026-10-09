@@ -25,7 +25,7 @@ const MAIN: [string, string, string][] = [
   ["contactor", "aux_contact_closed", "aux_contact_closed"], ["switch", "on", "on"],
   ["leak", "wet", "wet"], ["motion", "detected", "detected"], ["contact", "open", "open"],
   ["power_meter", "power", "power"], ["environment", "temperature", "temperature"],
-  ["camera", "stream_available", "stream_available"],
+  ["camera", "stream_available", "stream_available"], ["media", "on", "on"], ["remote", "buttons", "buttons"],
 ];
 
 /** Switch-like capabilities: the icon itself toggles them. */
@@ -34,6 +34,7 @@ const TOGGLE: Record<string, { attr: string; on: [string, Record<string, unknown
   climate: { attr: "power", on: ["set_power", { power: true }], off: ["set_power", { power: false }] },
   contactor: { attr: "aux_contact_closed", on: ["close"], off: ["open"] },
   breaker: { attr: "closed", on: ["close"], off: ["open"] },
+  media: { attr: "on", on: ["turn_on"], off: ["turn_off"] },
 };
 
 /** A second, smaller value next to the main one (brightness, room temperature, power). */
@@ -87,7 +88,7 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
   }
 
   // Explicit actions where a single tap would be a guess (unknown state) or is not on/off.
-  const pills: { cap: string; action: string; icon: string }[] = [];
+  const pills: { cap: string; action: string; icon: string; params?: Record<string, unknown>; label?: string }[] = [];
   if (toggleCap && bool(c[toggleCap].attributes[TOGGLE[toggleCap].attr]) === null && !offline) {
     pills.push({ cap: toggleCap, action: TOGGLE[toggleCap].on[0], icon: "power" },
       { cap: toggleCap, action: TOGGLE[toggleCap].off[0], icon: "stop" });
@@ -100,8 +101,17 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
     if (l !== true) pills.push({ cap: "lock", action: "lock", icon: "lock" });
   }
   if (c.valve && bool(c.valve.attributes.open) === true) pills.push({ cap: "valve", action: "close", icon: "stop" });
+  if (c.remote) {
+    // The most used buttons of an IR remote, once they are really learned.
+    const b = c.remote.attributes.buttons;
+    const learned = known(b) && Array.isArray(b!.value) ? (b!.value as string[]) : [];
+    for (const [btn, icon] of [["power", "power"], ["on", "power"], ["off", "stop"], ["vol_down", "minus"], ["vol_up", "plus"]]) {
+      if (learned.includes(btn)) pills.push({ cap: "remote", action: "press", icon, params: { button: btn }, label: t(`remote.btn.${btn}`) });
+    }
+  }
 
-  const sendPill = (p: { cap: string; action: string }) => {
+  const sendPill = (p: { cap: string; action: string; params?: Record<string, unknown> }) => {
+    if (p.params) { doSend(p.cap, p.action, p.params); return; }
     const spec = TOGGLE[p.cap];
     const params = spec && p.action === spec.on[0] ? spec.on[1] : spec && p.action === spec.off[0] ? spec.off[1] : undefined;
     doSend(p.cap, p.action, params);
@@ -121,7 +131,9 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
       <Link className="td-name" to={`/devices/${device.id}`}>{device.name}</Link>
       <div className="td-state" data-testid={`value-${mainLabel}`}>
         <span className={known(mainVal) ? "" : "dim"}>
-          {offline ? t("availability.offline") : tripped ? t("panel.tripped") : formatValue(mainVal, t, main?.[2])}
+          {offline ? t("availability.offline") : tripped ? t("panel.tripped")
+            : main?.[0] === "remote" ? (known(mainVal) ? t("remote.learnedCount", { count: (mainVal!.value as string[]).length }) : "—")
+            : formatValue(mainVal, t, main?.[2])}
         </span>
         {more && !offline && <span className="td-more">· {more}</span>}
         <span className={`td-q q-${kind}`} title={t(`status.${kind}`)}>
@@ -131,8 +143,8 @@ export function DeviceTile({ device, role }: { device: Device; role?: Role }) {
       {pills.length > 0 && (
         <div className="td-pills">
           {pills.map((p) => (
-            <button key={p.cap + p.action} type="button" aria-label={actionLabel(t, p.cap, p.action)}
-              title={actionLabel(t, p.cap, p.action)} disabled={disabledFor(p.cap)} onClick={() => sendPill(p)}>
+            <button key={p.cap + p.action + (p.label ?? "")} type="button" aria-label={p.label ?? actionLabel(t, p.cap, p.action)}
+              title={p.label ?? actionLabel(t, p.cap, p.action)} disabled={disabledFor(p.cap)} onClick={() => sendPill(p)}>
               <Icon name={p.icon} size={16} />
             </button>
           ))}

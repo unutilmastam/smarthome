@@ -38,6 +38,9 @@ class GatewaySettings(BaseSettings):
     tailnet_host: Optional[str] = None
     lan_host: Optional[str] = "hub.local"
 
+    # [SIM] e2e/demo only: simulate Tuya devices instead of reaching them on the LAN.
+    tuya_simulator: bool = False
+
     db_path: str = "hub.sqlite3"
     contracts_dir: Optional[Path] = None
 

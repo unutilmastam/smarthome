@@ -138,7 +138,7 @@ def main():
         "SIGNING_KEY_HEX": signing_key, "MQTT_HOST": "127.0.0.1", "MQTT_PORT": str(mport),
         "MQTT_USERNAME": "gateway", "MQTT_PASSWORD": GW_PW, "DB_PATH": str(tmp / "hub.sqlite3"),
         "POLL_INTERVAL_S": "0.5", "HEARTBEAT_INTERVAL_S": "2", "CONFIG_REFRESH_S": "2",
-        "FLUSH_INTERVAL_S": "0.3"})
+        "FLUSH_INTERVAL_S": "0.3", "TUYA_SIMULATOR": "1"})
     print("STACK READY", flush=True)
     while True:
         for p in procs:
@@ -179,6 +179,22 @@ for key, name, pos, rating, curve, poles, _ in BREAKERS:
                protocol="mqtt", unsupported=[], availability="unknown")
     d.capabilities = [DeviceCapability(capability="breaker", config_json={
         "position": pos, "rating_a": rating, "curve": curve, "poles": poles, "confirm_timeout_s": 5})]
+    db.add(d)
+# [SIM] Smart Life / Tuya devices (ADR 0016), simulated by the hub (TUYA_SIMULATOR).
+from app.core.secretbox import seal
+for key, name, icon, profile, caps in (
+        ("wifi_avtomat", "Konditsionerlar", "breaker", "breaker",
+         {"breaker": {"panel": "Hovli shiti", "position": 1, "rating_a": 25, "curve": "C", "poles": 1, "confirm_timeout_s": 5},
+          "power_meter": {}}),
+        ("wifi_rele", "Nasos relesi", "power", "switch", {"switch": {}}),
+        ("tv_pult", "Zal televizori", "tv", "ir", {"remote": {"layout": "tv"}})):
+    d = Device(id=uuid.uuid4(), home_id=home.id, key=key, name=name, adapter="tuya", icon=icon,
+               protocol="tuya-local", availability="unknown",
+               unsupported=["power_meter.power_factor", "power_meter.frequency"] if profile == "breaker" else [],
+               connection={"profile": profile, "device_id": "bf" + key.replace("_", "") + "0000", "ip": "192.168.1.60",
+                           "version": "3.4", "poll_s": 2})
+    d.secret_enc = seal(s.signing_master_key, "fakefakefakefake", str(d.id))
+    d.capabilities = [DeviceCapability(capability=c, config_json=cfg) for c, cfg in caps.items()]
     db.add(d)
 db.add(Notification(id=uuid.uuid4(), home_id=home.id, severity="critical", source="event",
                     kind="cover.sensor_conflict", title="Gerkonlar bir-biriga zid", body="",

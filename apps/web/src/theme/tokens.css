@@ -655,3 +655,20 @@ button.td-ico:disabled { opacity: 1; cursor: not-allowed; }
 .card { border-radius: 24px; }
 .cmd-line.ok { animation: fade-out .4s ease 2.5s forwards; }   /* done: the line goes away (state stays in the DOM) */
 @keyframes fade-out { to { opacity: 0; } }
+
+/* ---- add flow sections + IR remote / TV (ADR 0016) ---- */
+.pick-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; font-size: 15px; }
+.pick-sub { margin: 0 0 8px; }
+.pick-head ~ .tiles { margin-bottom: 14px; }
+.remote { display: grid; gap: 10px; }
+.rrow { display: grid; gap: 10px; }
+.rbtn { min-height: 52px; padding: 0 6px; border-radius: 16px; display: grid; place-items: center; font-weight: 700;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 14px; }
+.rbtn.has { background: var(--surface-solid); box-shadow: var(--shadow); }
+.rbtn.missing { opacity: .45; border-style: dashed; }
+.remote .rbtn.missing:not(:disabled) { opacity: .8; }
+.rbtn.listening { border-color: var(--pending); animation: pulse-sev 1.2s infinite; --sev: var(--pending); opacity: 1; }
+.layout-tv .rbtn.has[data-testid="rbtn-power"] { color: #fff; background: var(--danger); border-color: transparent; }
+.layout-ac .rbtn.has[data-testid="rbtn-on"] { color: #fff; background: var(--t-cool); border-color: transparent; }
+.rval { display: grid; justify-items: center; font-size: 12px; color: var(--muted); }
+.rval strong { font-size: 20px; color: var(--text); }

@@ -38,7 +38,7 @@ GitHub → repo → Settings → Secrets and variables → Actions → **New rep
 | `CPANEL_APP_DIR` | A.4 dagi Application root | `smarthome-api` |
 | `CPANEL_WEB_DIR` | A.2 dagi subdomen papkasi | `home.example.uz` |
 | `CPANEL_VENV_ACTIVATE` | A.4 dagi activate yo'li | `/home/myuser/virtualenv/smarthome-api/3.11/bin/activate` |
-| `CPANEL_DATABASE_URL` | A.3 dagi baza | `postgresql+psycopg://USER_shapp:PAROL@localhost:5432/USER_smarthome` |
+| `CPANEL_DATABASE_URL` | A.3 dagi baza | `postgresql+psycopg://USER_shapp:PAROL@127.0.0.1:5432/USER_smarthome` |
 | `PUBLIC_URL` | Sayt manzili | `https://home.example.uz` |
 | `TELEGRAM_BOT_TOKEN` | A.6 dagi token | `123456:ABC…` |
 | `TELEGRAM_CHAT_ID` | A.6 dagi chat id | `123456789` |

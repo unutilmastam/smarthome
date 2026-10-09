@@ -57,10 +57,14 @@ if [ ! -f "$APP_DIR/.env" ] && [ -z "$INIT_DATABASE_URL" ]; then
   ask DB_NAME "Baza nomi" "${DB_NAME:-}"
   ask DB_USER "Baza foydalanuvchisi" "${DB_USER:-}"
   DB_PASS=""; ask_secret DB_PASS "Foydalanuvchi paroli (ko'rinmaydi)"
-  INIT_DATABASE_URL="$(DBU="$DB_USER" DBP="$DB_PASS" DBN="$DB_NAME" python3 -c '
+  # "localhost" may resolve to ::1, which cPanel's pg_hba.conf often rejects: try 127.0.0.1,
+  # fall back to the local unix socket (empty host).
+  DB_HOST=127.0.0.1
+  PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c 'select 1' >/dev/null 2>&1 || DB_HOST=""
+  INIT_DATABASE_URL="$(DBU="$DB_USER" DBP="$DB_PASS" DBN="$DB_NAME" DBH="${DB_HOST:+$DB_HOST:5432}" python3 -c '
 import os, urllib.parse as u
-print("postgresql+psycopg://%s:%s@localhost:5432/%s" % (u.quote(os.environ["DBU"], safe=""),
-      u.quote(os.environ["DBP"], safe=""), u.quote(os.environ["DBN"], safe="")))')"
+print("postgresql+psycopg://%s:%s@%s/%s" % (u.quote(os.environ["DBU"], safe=""),
+      u.quote(os.environ["DBP"], safe=""), os.environ["DBH"], u.quote(os.environ["DBN"], safe="")))')"
 fi
 
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
